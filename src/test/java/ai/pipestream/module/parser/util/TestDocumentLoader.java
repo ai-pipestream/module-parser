@@ -90,15 +90,23 @@ public class TestDocumentLoader {
     private static Multi<Path> streamResourcePaths(String resourceDir) {
         return Multi.createFrom().emitter(emitter -> {
             try {
+                // Prefer external directories if configured via env var or system property
+                Path external = resolveExternalResourceDir(resourceDir);
+                if (external != null && Files.isDirectory(external)) {
+                    LOG.infof("Using external test resources for '%s' at: %s", resourceDir, external);
+                    walkAndEmit(external, emitter);
+                    return;
+                }
+
                 URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(resourceDir);
                 if (resourceUrl == null) {
-                    LOG.warnf("Resource directory not found: %s", resourceDir);
+                    LOG.warnf("Resource directory not found (classpath): %s", resourceDir);
                     emitter.complete();
                     return;
                 }
-                
+
                 URI uri = resourceUrl.toURI();
-                
+
                 // Handle JAR vs filesystem resources
                 if ("jar".equals(uri.getScheme())) {
                     // For JARs, we need to open a FileSystem to walk the contents
@@ -111,13 +119,69 @@ public class TestDocumentLoader {
                     Path resourcePath = Paths.get(uri);
                     walkAndEmit(resourcePath, emitter);
                 }
-                
+
             } catch (IOException | URISyntaxException e) {
                 LOG.errorf(e, "Failed to stream resources from %s", resourceDir);
                 emitter.fail(e);
             }
         });
         // Note: We've already executed the blocking operation above
+    }
+
+    /**
+     * Resolve a resource directory name (e.g., "test-documents" or "sample_doc_types")
+     * to an external filesystem path when configured. Two mechanisms supported:
+     * - Environment variables: TEST_DOCUMENTS, SAMPLE_DOC_TYPES
+     * - System properties: test.documents, sample.doc.types
+     * If resourceDir starts with one of the known logical names, return the resolved base path
+     * joined with the remaining subpath. Otherwise return null.
+     */
+    private static Path resolveExternalResourceDir(String resourceDir) {
+        String normalized = resourceDir == null ? "" : resourceDir.replace('\\', '/');
+
+        // Helpers to read env or property
+        java.util.function.Function<String, String> prop = System::getProperty;
+        java.util.function.Function<String, String> env = System::getenv;
+
+        // Known roots and their env/prop mapping
+        String testDocsRoot = firstNonBlank(
+                env.apply("TEST_DOCUMENTS"),
+                prop.apply("test.documents")
+        );
+        String sampleTypesRoot = firstNonBlank(
+                env.apply("SAMPLE_DOC_TYPES"),
+                prop.apply("sample.doc.types")
+        );
+
+        if (normalized.startsWith("test-documents")) {
+            if (isBlank(testDocsRoot)) return null;
+            Path base = Paths.get(testDocsRoot);
+            String remainder = normalized.length() == "test-documents".length() ? "" : normalized.substring("test-documents".length());
+            remainder = remainder.startsWith("/") ? remainder.substring(1) : remainder;
+            return remainder.isEmpty() ? base : base.resolve(remainder);
+        }
+
+        if (normalized.startsWith("sample_doc_types")) {
+            if (isBlank(sampleTypesRoot)) return null;
+            Path base = Paths.get(sampleTypesRoot);
+            String remainder = normalized.length() == "sample_doc_types".length() ? "" : normalized.substring("sample_doc_types".length());
+            remainder = remainder.startsWith("/") ? remainder.substring(1) : remainder;
+            return remainder.isEmpty() ? base : base.resolve(remainder);
+        }
+
+        return null;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) return null;
+        for (String v : values) {
+            if (!isBlank(v)) return v;
+        }
+        return null;
     }
     
     /**

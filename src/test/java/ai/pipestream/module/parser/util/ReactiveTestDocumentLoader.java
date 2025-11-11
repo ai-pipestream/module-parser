@@ -40,11 +40,19 @@ public class ReactiveTestDocumentLoader {
         public final String resourcePath;
         public final String filename;
         public final String category;
+        public final Path filePath; // non-null when using external filesystem
+        public final boolean external;
         
         public ResourceReference(String resourcePath, String filename, String category) {
+            this(resourcePath, filename, category, null, false);
+        }
+
+        public ResourceReference(String resourcePath, String filename, String category, Path filePath, boolean external) {
             this.resourcePath = resourcePath;
             this.filename = filename;
             this.category = category;
+            this.filePath = filePath;
+            this.external = external;
         }
     }
     
@@ -113,6 +121,14 @@ public class ReactiveTestDocumentLoader {
             // Run the blocking I/O operations on a worker thread
             Infrastructure.getDefaultWorkerPool().execute(() -> {
                 try {
+                    // Prefer external directories if configured via env var or system property
+                    Path external = resolveExternalResourceDir(resourceDir);
+                    if (external != null && Files.isDirectory(external)) {
+                        LOG.infof("Using external test resources for '%s' at: %s", resourceDir, external);
+                        emitExternalResourceReferences(external, resourceDir, emitter);
+                        return;
+                    }
+
                     URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(resourceDir);
                     if (resourceUrl == null) {
                         LOG.warnf("Resource directory not found: %s", resourceDir);
@@ -177,6 +193,33 @@ public class ReactiveTestDocumentLoader {
             emitter.fail(e);
         }
     }
+
+    /**
+     * Emit references for external filesystem resources.
+     */
+    private static void emitExternalResourceReferences(Path basePath, String logicalResourceDir,
+                                              io.smallrye.mutiny.subscription.MultiEmitter<? super ResourceReference> emitter) {
+        try (Stream<Path> walk = Files.walk(basePath)) {
+            walk.filter(Files::isRegularFile)
+                .sorted()
+                .forEach(path -> {
+                    String filename = path.getFileName().toString();
+                    String category = "unknown";
+                    Path parent = path.getParent();
+                    if (parent != null && !parent.equals(basePath)) {
+                        category = parent.getFileName().toString();
+                    }
+                    Path relativePath = basePath.relativize(path);
+                    String displayPath = logicalResourceDir + "/" + relativePath.toString().replace('\\', '/');
+                    ResourceReference ref = new ResourceReference(displayPath, filename, category, path, true);
+                    emitter.emit(ref);
+                    LOG.tracef("Emitted external reference: %s -> %s", displayPath, path);
+                });
+            emitter.complete();
+        } catch (IOException e) {
+            emitter.fail(e);
+        }
+    }
     
     /**
      * Load a PipeDoc from a ResourceReference.
@@ -185,17 +228,19 @@ public class ReactiveTestDocumentLoader {
     private static Uni<PipeDoc> loadDocumentFromReference(ResourceReference ref) {
         return Uni.createFrom().item(() -> {
             try {
-                // Load the resource content using the classloader
-                InputStream inputStream = Thread.currentThread().getContextClassLoader()
-                        .getResourceAsStream(ref.resourcePath);
-                        
-                if (inputStream == null) {
-                    throw new IOException("Could not load resource: " + ref.resourcePath);
-                }
-                
                 byte[] content;
-                try (inputStream) {
-                    content = inputStream.readAllBytes();
+                if (ref.external && ref.filePath != null) {
+                    content = Files.readAllBytes(ref.filePath);
+                } else {
+                    // Load the resource content using the classloader
+                    InputStream inputStream = Thread.currentThread().getContextClassLoader()
+                            .getResourceAsStream(ref.resourcePath);
+                    if (inputStream == null) {
+                        throw new IOException("Could not load resource: " + ref.resourcePath);
+                    }
+                    try (inputStream) {
+                        content = inputStream.readAllBytes();
+                    }
                 }
                 
                 // Determine MIME type from filename
@@ -310,5 +355,59 @@ public class ReactiveTestDocumentLoader {
         public int getProcessed() { return processed.get(); }
         public int getSuccessful() { return successful.get(); }
         public int getFailed() { return failed.get(); }
+    }
+
+    /**
+     * Resolve a resource directory name (e.g., "test-documents" or "sample_doc_types")
+     * to an external filesystem path when configured. Two mechanisms supported:
+     * - Environment variables: TEST_DOCUMENTS, SAMPLE_DOC_TYPES
+     * - System properties: test.documents, sample.doc.types
+     * If resourceDir starts with one of the known logical names, return the resolved base path
+     * joined with the remaining subpath. Otherwise return null.
+     */
+    private static Path resolveExternalResourceDir(String resourceDir) {
+        String normalized = resourceDir == null ? "" : resourceDir.replace('\\', '/');
+
+        java.util.function.Function<String, String> prop = System::getProperty;
+        java.util.function.Function<String, String> env = System::getenv;
+
+        String testDocsRoot = firstNonBlank(
+                env.apply("TEST_DOCUMENTS"),
+                prop.apply("test.documents")
+        );
+        String sampleTypesRoot = firstNonBlank(
+                env.apply("SAMPLE_DOC_TYPES"),
+                prop.apply("sample.doc.types")
+        );
+
+        if (normalized.startsWith("test-documents")) {
+            if (isBlank(testDocsRoot)) return null;
+            Path base = Paths.get(testDocsRoot);
+            String remainder = normalized.length() == "test-documents".length() ? "" : normalized.substring("test-documents".length());
+            remainder = remainder.startsWith("/") ? remainder.substring(1) : remainder;
+            return remainder.isEmpty() ? base : base.resolve(remainder);
+        }
+
+        if (normalized.startsWith("sample_doc_types")) {
+            if (isBlank(sampleTypesRoot)) return null;
+            Path base = Paths.get(sampleTypesRoot);
+            String remainder = normalized.length() == "sample_doc_types".length() ? "" : normalized.substring("sample_doc_types".length());
+            remainder = remainder.startsWith("/") ? remainder.substring(1) : remainder;
+            return remainder.isEmpty() ? base : base.resolve(remainder);
+        }
+
+        return null;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) return null;
+        for (String v : values) {
+            if (!isBlank(v)) return v;
+        }
+        return null;
     }
 }

@@ -7,6 +7,9 @@ import org.netpreserve.jwarc.WarcRecord;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
@@ -23,9 +26,8 @@ public class WarcNormalizationTest {
                 "sample_doc_types/warc/sample-medium-646kb.warc.gz"
         );
         int ok = 0;
-        ClassLoader cl = Thread.currentThread().getContextClassLoader();
         for (String p : files) {
-            InputStream raw = cl.getResourceAsStream(p);
+            InputStream raw = openTestResource(p);
             Assumptions.assumeTrue(raw != null, "Missing resource: " + p);
             byte[] original = raw.readAllBytes();
             byte[] normalized = WarcNormalizer.normalizeGz(original);
@@ -41,5 +43,29 @@ public class WarcNormalizationTest {
             }
         }
         assertThat("At least one normalized WARC should parse via jwarc", ok, greaterThan(0));
+    }
+
+    private static InputStream openTestResource(String logicalPath) throws Exception {
+        // Try external path via SAMPLE_DOC_TYPES env or system property
+        String sampleTypesRoot = firstNonBlank(
+                System.getenv("SAMPLE_DOC_TYPES"),
+                System.getProperty("sample.doc.types")
+        );
+        if (logicalPath.startsWith("sample_doc_types/") && sampleTypesRoot != null && !sampleTypesRoot.isBlank()) {
+            String remainder = logicalPath.substring("sample_doc_types/".length());
+            Path p = Paths.get(sampleTypesRoot).resolve(remainder);
+            if (Files.exists(p)) {
+                return Files.newInputStream(p);
+            }
+        }
+        // Fallback to classpath
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        return cl.getResourceAsStream(logicalPath);
+    }
+
+    private static String firstNonBlank(String... vals) {
+        if (vals == null) return null;
+        for (String v : vals) if (v != null && !v.trim().isEmpty()) return v;
+        return null;
     }
 }

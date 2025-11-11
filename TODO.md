@@ -426,7 +426,7 @@ public class ParserServiceImpl {
 1. **Choose Next Extractor**: Start with PDF (Priority 1, well-defined)
 
 2. **Create Builder Class**:
-   - Create `{Type}MetadataBuilder.java` in `io.pipeline.module.parser.tika.builders`
+   - Create `{Type}MetadataBuilder.java` in `ai.pipestream.module.parser.tika.builders`
    - Follow standard builder pattern
    - Map all Tika interface fields to protobuf fields
 

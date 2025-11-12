@@ -7,6 +7,8 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.Struct;
 import com.google.protobuf.Value;
 import ai.pipestream.module.parser.config.ParserConfig;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.apache.tika.Tika;
 import org.apache.tika.config.TikaConfig;
 import org.apache.tika.exception.TikaException;
@@ -44,26 +46,23 @@ import java.util.stream.Collectors;
 import org.apache.tika.mime.MediaType;
 
 /**
- * Utility class for parsing documents using Apache Tika.
- * 
- * <p>This class provides static methods to parse various document formats using Apache Tika.
+ * CDI bean for parsing documents using Apache Tika.
+ *
+ * <p>This class provides methods to parse various document formats using Apache Tika.
  * It supports custom parser configurations, metadata extraction, and content length limits.
  * The parser can handle various document formats including PDF, Microsoft Office documents,
  * HTML, XML, and plain text files.</p>
- * 
+ *
  * <p>The parser can be configured to disable specific parsers (like EMF) for problematic
  * file types, or enable special parsers (like GeoTopicParser) for enhanced functionality.</p>
  */
+@Singleton
 public class DocumentParser {
     private static final Logger LOG = Logger.getLogger(DocumentParser.class);
     private static final Tika TIKA = new Tika();
 
-    /**
-     * Private constructor to prevent instantiation of this utility class.
-     */
-    private DocumentParser() {
-        // Utility class
-    }
+    @Inject
+    MetadataMapper metadataMapper;
 
     /**
      * Parses a document and returns a PipeDoc with the parsed content using ParserConfig.
@@ -76,7 +75,7 @@ public class DocumentParser {
      * @throws SAXException if a SAX error occurs while parsing the document.
      * @throws TikaException if a Tika error occurs while parsing the document.
      */
-    public static PipeDoc parseDocument(ByteString content, ParserConfig config, String filename)
+    public PipeDoc parseDocument(ByteString content, ParserConfig config, String filename)
             throws IOException, SAXException, TikaException {
         
         LOG.debugf("Parsing document with filename: %s, content size: %d bytes, config ID: %s", 
@@ -100,7 +99,7 @@ public class DocumentParser {
      * @throws SAXException if a SAX error occurs while parsing the document.
      * @throws TikaException if a Tika error occurs while parsing the document.
      */
-    public static PipeDoc parseDocument(ByteString content, Map<String, String> configMap, String filename)
+    public PipeDoc parseDocument(ByteString content, Map<String, String> configMap, String filename)
             throws IOException, SAXException, TikaException {
         
         LOG.debugf("Parsing document with filename: %s, content size: %d bytes", 
@@ -224,7 +223,7 @@ public class DocumentParser {
         
         // Add metadata if requested
         if (getBooleanConfig(configMap, "extractMetadata", true)) {
-            Map<String, String> metadataMap = MetadataMapper.toMap(metadata, configMap);
+            Map<String, String> metadataMap = metadataMapper.toMap(metadata, configMap);
             if (!metadataMap.isEmpty()) {
                 Struct.Builder structBuilder = Struct.newBuilder();
                 for (Map.Entry<String, String> entry : metadataMap.entrySet()) {
@@ -249,7 +248,7 @@ public class DocumentParser {
     /**
      * Convenience method that parses without filename.
      */
-    public static PipeDoc parseDocument(ByteString content, Map<String, String> configMap) 
+    public PipeDoc parseDocument(ByteString content, Map<String, String> configMap)
             throws IOException, SAXException, TikaException {
         return parseDocument(content, configMap, null);
     }
@@ -265,7 +264,7 @@ public class DocumentParser {
      * 2. Consider always disabling EMF parser for problematic document types
      * 3. Implement custom EMF parser configuration based on document analysis
      */
-    private static Parser createParser(Map<String, String> configMap, String filename) {
+    private Parser createParser(Map<String, String> configMap, String filename) {
         boolean disableEmfParser = shouldDisableEmfParserForFile(configMap, filename);
         boolean enableGeoTopicParser = getBooleanConfig(configMap, "enableGeoTopicParser", false);
         boolean isFont = filename != null && filename.toLowerCase().matches(".*\\.(ttf|otf|woff2?|pfa|pfb)$");
@@ -314,7 +313,7 @@ public class DocumentParser {
     /**
      * Creates a content handler with appropriate limits.
      */
-    private static BodyContentHandler createContentHandler(Map<String, String> configMap) {
+    private BodyContentHandler createContentHandler(Map<String, String> configMap) {
         // Default to 100MB limit for content extraction
         int maxContentLength = getIntConfig(configMap, "maxContentLength", 100 * 1024 * 1024);
         
@@ -330,7 +329,7 @@ public class DocumentParser {
     /**
      * Extracts title from metadata with fallbacks.
      */
-    private static String extractTitle(Metadata metadata, String body, Map<String, String> configMap) {
+    private String extractTitle(Metadata metadata, String body, Map<String, String> configMap) {
         // Try various title metadata fields
         String title = cleanUpText(metadata.get("dc:title"));
         if (title == null || title.isEmpty()) {
@@ -357,7 +356,7 @@ public class DocumentParser {
     /**
      * Extracts body content with fallbacks.
      */
-    private static String extractBody(String handlerContent, Metadata metadata, ByteString originalContent, Map<String, String> configMap) {
+    private String extractBody(String handlerContent, Metadata metadata, ByteString originalContent, Map<String, String> configMap) {
         String body = cleanUpText(handlerContent);
         
         // If body is empty, try to get content from other metadata fields
@@ -386,7 +385,7 @@ public class DocumentParser {
     /**
      * Post-processes a parsed document based on its content type.
      */
-    private static PipeDoc postProcessParsedDocument(PipeDoc parsedDoc, Metadata metadata, String filename, Map<String, String> configMap) {
+    private PipeDoc postProcessParsedDocument(PipeDoc parsedDoc, Metadata metadata, String filename, Map<String, String> configMap) {
         // If both title and body are non-empty, minimal post-processing needed
         if (!parsedDoc.getSearchMetadata().getTitle().isEmpty() && !parsedDoc.getSearchMetadata().getBody().isEmpty()) {
             return parsedDoc;
@@ -428,7 +427,7 @@ public class DocumentParser {
     /**
      * Creates a custom Tika configuration XML that disables problematic parsers.
      */
-    private static String createCustomParserConfig() 
+    private String createCustomParserConfig()
             throws ParserConfigurationException, TransformerException {
         DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
         DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
@@ -454,7 +453,7 @@ public class DocumentParser {
     /**
      * Creates a Tika configuration XML with GeoTopicParser enabled.
      */
-    private static String createGeoTopicParserConfig() 
+    private String createGeoTopicParserConfig()
             throws ParserConfigurationException, TransformerException {
         DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
         DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
@@ -480,7 +479,7 @@ public class DocumentParser {
     /**
      * Transforms an XML Document to a string.
      */
-    private static String transformDocumentToString(Document doc) throws TransformerException {
+    private String transformDocumentToString(Document doc) throws TransformerException {
         TransformerFactory transformerFactory = TransformerFactory.newInstance();
         Transformer transformer = transformerFactory.newTransformer();
         transformer.setOutputProperty(OutputKeys.INDENT, "yes");
@@ -492,7 +491,7 @@ public class DocumentParser {
     }
     
     // Document type-specific processing methods (simplified versions)
-    private static void processPdfDocument(PipeDoc parsedDoc, PipeDoc.Builder builder, Metadata metadata) {
+    private void processPdfDocument(PipeDoc parsedDoc, PipeDoc.Builder builder, Metadata metadata) {
         if (parsedDoc.getSearchMetadata().getTitle().isEmpty()) {
             String title = metadata.get("pdf:docinfo:title");
             if (title != null && !title.isEmpty()) {
@@ -504,7 +503,7 @@ public class DocumentParser {
         }
     }
     
-    private static void processPresentationDocument(PipeDoc parsedDoc, PipeDoc.Builder builder, Metadata metadata) {
+    private void processPresentationDocument(PipeDoc parsedDoc, PipeDoc.Builder builder, Metadata metadata) {
         if (parsedDoc.getSearchMetadata().getTitle().isEmpty()) {
             String title = metadata.get("dc:title");
             if (title == null || title.isEmpty()) {
@@ -519,7 +518,7 @@ public class DocumentParser {
         }
     }
     
-    private static void processWordDocument(PipeDoc parsedDoc, PipeDoc.Builder builder, Metadata metadata) {
+    private void processWordDocument(PipeDoc parsedDoc, PipeDoc.Builder builder, Metadata metadata) {
         if (parsedDoc.getSearchMetadata().getTitle().isEmpty()) {
             String title = metadata.get("dc:title");
             if (title == null || title.isEmpty()) {
@@ -534,7 +533,7 @@ public class DocumentParser {
         }
     }
     
-    private static void processSpreadsheetDocument(PipeDoc parsedDoc, PipeDoc.Builder builder, Metadata metadata) {
+    private void processSpreadsheetDocument(PipeDoc parsedDoc, PipeDoc.Builder builder, Metadata metadata) {
         if (parsedDoc.getSearchMetadata().getTitle().isEmpty()) {
             String title = metadata.get("dc:title");
             if (title != null && !title.isEmpty()) {
@@ -546,7 +545,7 @@ public class DocumentParser {
         }
     }
     
-    private static void processHtmlDocument(PipeDoc parsedDoc, PipeDoc.Builder builder, Metadata metadata) {
+    private void processHtmlDocument(PipeDoc parsedDoc, PipeDoc.Builder builder, Metadata metadata) {
         if (parsedDoc.getSearchMetadata().getTitle().isEmpty()) {
             String title = metadata.get("dc:title");
             if (title == null || title.isEmpty()) {
@@ -582,7 +581,7 @@ public class DocumentParser {
     /**
      * Infers content type from filename extension.
      */
-    private static String inferContentTypeFromFilename(String filename) {
+    private String inferContentTypeFromFilename(String filename) {
         if (filename == null) {
             return "";
         }
@@ -592,7 +591,7 @@ public class DocumentParser {
     /**
      * Cleans up extracted text by trimming whitespace and normalizing line breaks.
      */
-    private static String cleanUpText(String text) {
+    private String cleanUpText(String text) {
         if (text == null) {
             return "";
         }
@@ -607,7 +606,7 @@ public class DocumentParser {
     /**
      * Gets an integer configuration value with a default.
      */
-    private static int getIntConfig(Map<String, String> configMap, String key, int defaultValue) {
+    private int getIntConfig(Map<String, String> configMap, String key, int defaultValue) {
         String value = configMap.get(key);
         if (value == null || value.isEmpty()) {
             return defaultValue;
@@ -623,7 +622,7 @@ public class DocumentParser {
     /**
      * Gets a boolean configuration value with a default.
      */
-    private static boolean getBooleanConfig(Map<String, String> configMap, String key, boolean defaultValue) {
+    private boolean getBooleanConfig(Map<String, String> configMap, String key, boolean defaultValue) {
         String value = configMap.get(key);
         if (value == null || value.isEmpty()) {
             return defaultValue;
@@ -638,7 +637,7 @@ public class DocumentParser {
      * that contain embedded EMF graphics. This causes AssertionError in HemfPlusRecordIterator.
      * For production stability, we default to disabling EMF parser for potentially problematic files.
      */
-    private static boolean shouldDisableEmfParserForFile(Map<String, String> configMap, String filename) {
+    private boolean shouldDisableEmfParserForFile(Map<String, String> configMap, String filename) {
         // Check if EMF parser is explicitly disabled
         if (getBooleanConfig(configMap, "disableEmfParser", false)) {
             return true;
@@ -670,7 +669,7 @@ public class DocumentParser {
     /**
      * Converts ParserConfig record to Map<String, String> for compatibility with existing code.
      */
-    private static Map<String, String> convertConfigToMap(ParserConfig config) {
+    private Map<String, String> convertConfigToMap(ParserConfig config) {
         Map<String, String> configMap = new TreeMap<>();
         
         // Parsing options

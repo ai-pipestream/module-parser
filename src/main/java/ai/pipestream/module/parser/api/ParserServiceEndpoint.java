@@ -30,6 +30,8 @@ import java.io.File;
 import java.nio.file.Files;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import javax.print.Doc;
+
 /**
  * REST API endpoints for parser service.
  * Provides developer-friendly HTTP endpoints for testing and integration.
@@ -47,6 +49,9 @@ public class ParserServiceEndpoint {
 
     @Inject
     SchemaExtractorService schemaExtractorService;
+
+    @Inject
+    DocumentParser documentParser;
 
     @ConfigProperty(name = "module.name")
     String moduleName;
@@ -337,7 +342,7 @@ public class ParserServiceEndpoint {
                 // this calls the same DocumentParser.parseDocument() method as the gRPC service
                 
                 // Parse the document using DocumentParser (calls the same logic as gRPC service)
-                PipeDoc parsedDoc = DocumentParser.parseDocument(
+                PipeDoc parsedDoc = documentParser.parseDocument(
                     ByteString.copyFromUtf8(text),
                     config,
                     "form-input.txt"  // Default filename for form input
@@ -424,7 +429,7 @@ public class ParserServiceEndpoint {
                 LOG.debugf("Parsing with config ID: %s, text length: %d", config.configId(), text.length());
                 
                 // Parse the document using DocumentParser (same logic as gRPC service)
-                PipeDoc parsedDoc = DocumentParser.parseDocument(
+                PipeDoc parsedDoc = documentParser.parseDocument(
                     com.google.protobuf.ByteString.copyFromUtf8(text),
                     config,
                     "json-input.txt"
@@ -692,7 +697,7 @@ public class ParserServiceEndpoint {
                 ParserConfig config = objectMapper.readValue(configJson, ParserConfig.class);
 
                 // Parse the document using DocumentParser
-                PipeDoc parsedDoc = DocumentParser.parseDocument(
+                PipeDoc parsedDoc = documentParser.parseDocument(
                     com.google.protobuf.ByteString.copyFrom(fileContent),
                     config,
                     file.fileName()

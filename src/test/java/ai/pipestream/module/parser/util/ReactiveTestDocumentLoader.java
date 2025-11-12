@@ -111,6 +111,72 @@ public class ReactiveTestDocumentLoader {
                 .collect().asList()
                 .map(list -> (long) list.size());
     }
+
+    /**
+     * Validate that test document configuration is properly set up.
+     * This should be called at the beginning of tests that require sample documents.
+     * Throws an exception with clear instructions if configuration is missing.
+     */
+    public static void validateTestDocumentConfiguration() {
+        String testDocsPath = System.getProperty("test.documents");
+        String sampleTypesPath = System.getProperty("sample.doc.types");
+        String testDocsEnv = System.getenv("TEST_DOCUMENTS");
+        String sampleTypesEnv = System.getenv("SAMPLE_DOC_TYPES");
+
+        boolean hasTestDocs = !isBlank(testDocsPath) || !isBlank(testDocsEnv);
+        boolean hasSampleTypes = !isBlank(sampleTypesPath) || !isBlank(sampleTypesEnv);
+
+        // Check if paths actually exist
+        boolean testDocsExists = false;
+        boolean sampleTypesExists = false;
+
+        if (hasTestDocs) {
+            String path = firstNonBlank(testDocsPath, testDocsEnv);
+            testDocsExists = path != null && Files.exists(Paths.get(path));
+        }
+
+        if (hasSampleTypes) {
+            String path = firstNonBlank(sampleTypesPath, sampleTypesEnv);
+            sampleTypesExists = path != null && Files.exists(Paths.get(path));
+        }
+
+        // If neither is configured, check if automatic inference worked
+        if (!hasTestDocs && !hasSampleTypes) {
+            Path inferred = Paths.get("../../sample-documents");
+            if (Files.exists(inferred)) {
+                LOG.info("Sample documents found via automatic inference - configuration is valid");
+                return;
+            }
+        }
+
+        // If configured but paths don't exist, that's an error
+        if ((hasTestDocs && !testDocsExists) || (hasSampleTypes && !sampleTypesExists)) {
+            StringBuilder error = new StringBuilder();
+            error.append("Test document configuration error:\n");
+
+            if (hasTestDocs && !testDocsExists) {
+                error.append("- TEST_DOCUMENTS path does not exist: ").append(firstNonBlank(testDocsPath, testDocsEnv)).append("\n");
+            }
+            if (hasSampleTypes && !sampleTypesExists) {
+                error.append("- SAMPLE_DOC_TYPES path does not exist: ").append(firstNonBlank(sampleTypesPath, sampleTypesEnv)).append("\n");
+            }
+
+            error.append("\nTo fix this:\n");
+            error.append("1. Set environment variables:\n");
+            error.append("   export TEST_DOCUMENTS=/path/to/sample-documents/test-documents\n");
+            error.append("   export SAMPLE_DOC_TYPES=/path/to/sample-documents/sample_doc_types\n");
+            error.append("\n2. Or use system properties:\n");
+            error.append("   ./gradlew test -Dtest.documents=/path/to/sample-documents/test-documents -Dsample.doc.types=/path/to/sample-documents/sample_doc_types\n");
+            error.append("\n3. Or ensure sample-documents directory exists at: ").append(Paths.get("../../sample-documents").toAbsolutePath());
+
+            throw new IllegalStateException(error.toString());
+        }
+
+        // If configuration is valid, log success
+        if (testDocsExists || sampleTypesExists) {
+            LOG.info("Test document configuration validated successfully");
+        }
+    }
     
     /**
      * Emit resource references without loading content.
@@ -140,7 +206,8 @@ public class ReactiveTestDocumentLoader {
 
                     URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(resourceDir);
                     if (resourceUrl == null) {
-                        LOG.warnf("Resource directory not found: %s", resourceDir);
+                        LOG.warnf("Resource directory not found in classpath: %s. This is expected when using external test documents.", resourceDir);
+                        LOG.infof("Will attempt to load from external filesystem paths configured via TEST_DOCUMENTS/SAMPLE_DOC_TYPES environment variables or system properties");
                         emitter.complete();
                         return;
                     }
@@ -389,16 +456,46 @@ public class ReactiveTestDocumentLoader {
                 prop.apply("sample.doc.types")
         );
 
-        // Helper to infer default base directory without cloning
+        // Helper to infer default base directory with multiple fallback strategies
         java.util.function.Supplier<Path> inferDefaultBase = () -> {
             try {
-                Path sibling = Paths.get("..", "sample-documents").normalize().toAbsolutePath();
-                if (Files.isDirectory(sibling)) return sibling;
+                // Strategy 1: Check relative to project root (common in multi-module projects)
+                Path projectRelative = Paths.get("../../sample-documents").normalize().toAbsolutePath();
+                if (Files.isDirectory(projectRelative)) {
+                    LOG.debugf("Found sample-documents at project relative path: %s", projectRelative);
+                    return projectRelative;
+                }
+
+                // Strategy 2: Check one level up (original logic)
+                Path sibling = Paths.get("../sample-documents").normalize().toAbsolutePath();
+                if (Files.isDirectory(sibling)) {
+                    LOG.debugf("Found sample-documents at sibling path: %s", sibling);
+                    return sibling;
+                }
+
+                // Strategy 3: Check common CI/build directories
                 Path tmp = Paths.get("/tmp", "sample-documents");
-                if (Files.isDirectory(tmp)) return tmp.toAbsolutePath();
-            } catch (Exception ignored) {
+                if (Files.isDirectory(tmp)) {
+                    LOG.debugf("Found sample-documents in /tmp: %s", tmp);
+                    return tmp.toAbsolutePath();
+                }
+
+                // Strategy 4: Check user home for development
+                String userHome = System.getProperty("user.home");
+                if (userHome != null) {
+                    Path homePath = Paths.get(userHome, "sample-documents");
+                    if (Files.isDirectory(homePath)) {
+                        LOG.debugf("Found sample-documents in user home: %s", homePath);
+                        return homePath;
+                    }
+                }
+
+                LOG.debug("No sample-documents directory found using any inference strategy");
+                return null;
+            } catch (Exception e) {
+                LOG.debugf("Exception during base directory inference: %s", e.getMessage());
+                return null;
             }
-            return null;
         };
 
         if (normalized.startsWith("test-documents")) {
@@ -413,8 +510,9 @@ public class ReactiveTestDocumentLoader {
                 }
             }
             if (base == null) {
-                LOG.debugf("TEST_DOCUMENTS not set and no inferred default found. Env TEST_DOCUMENTS=%s, system -Dtest.documents=%s",
-                        testDocsRoot, System.getProperty("test.documents"));
+                LOG.warnf("TEST_DOCUMENTS not configured for '%s'. Checked: env TEST_DOCUMENTS='%s', system -Dtest.documents='%s', inferred paths",
+                        resourceDir, testDocsRoot, System.getProperty("test.documents"));
+                LOG.warnf("To fix: Set TEST_DOCUMENTS environment variable or -Dtest.documents system property to the absolute path of your test documents directory");
             }
             if (base == null) return null;
             String remainder = normalized.length() == "test-documents".length() ? "" : normalized.substring("test-documents".length());
@@ -434,8 +532,9 @@ public class ReactiveTestDocumentLoader {
                 }
             }
             if (base == null) {
-                LOG.debugf("SAMPLE_DOC_TYPES not set and no inferred default found. Env SAMPLE_DOC_TYPES=%s, system -Dsample.doc.types=%s",
-                        sampleTypesRoot, System.getProperty("sample.doc.types"));
+                LOG.warnf("SAMPLE_DOC_TYPES not configured for '%s'. Checked: env SAMPLE_DOC_TYPES='%s', system -Dsample.doc.types='%s', inferred paths",
+                        resourceDir, sampleTypesRoot, System.getProperty("sample.doc.types"));
+                LOG.warnf("To fix: Set SAMPLE_DOC_TYPES environment variable or -Dsample.doc.types system property to the absolute path of your sample document types directory");
             }
             if (base == null) return null;
             String remainder = normalized.length() == "sample_doc_types".length() ? "" : normalized.substring("sample_doc_types".length());

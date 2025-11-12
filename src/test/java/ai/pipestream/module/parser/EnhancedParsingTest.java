@@ -35,6 +35,9 @@ public class EnhancedParsingTest {
     @Test
     public void testEnhancedParsingWithAllOptions() {
         LOG.info("=== Testing Enhanced Parsing with Comprehensive Extraction ===");
+
+        // Validate test document configuration before running the test
+        ReactiveTestDocumentLoader.validateTestDocumentConfiguration();
         
         // Create enhanced parser configuration with all options enabled
         ParserConfig enhancedConfig = ParserConfig.create(
@@ -159,6 +162,9 @@ public class EnhancedParsingTest {
     @Test
     public void testMinimalParsingConfiguration() {
         LOG.info("=== Testing Minimal Parsing Configuration ===");
+
+        // Validate test document configuration before running the test
+        ReactiveTestDocumentLoader.validateTestDocumentConfiguration();
         
         // Create minimal parser configuration
         ParserConfig minimalConfig = ParserConfig.create(

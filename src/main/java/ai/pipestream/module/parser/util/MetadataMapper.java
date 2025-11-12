@@ -1,5 +1,6 @@
 package ai.pipestream.module.parser.util;
 
+import jakarta.inject.Singleton;
 import org.apache.tika.metadata.Metadata;
 import org.jboss.logging.Logger;
 
@@ -10,14 +11,11 @@ import java.util.Map;
  * Utility class for mapping Tika Metadata to protobuf-compatible maps.
  * Handles metadata normalization and cleanup.
  */
+@Singleton
 public class MetadataMapper {
     private static final Logger LOG = Logger.getLogger(MetadataMapper.class);
     
     private static final int DEFAULT_MAX_VALUE_LENGTH = 10000; // Default maximum metadata value length
-
-    private MetadataMapper() {
-        // Utility class
-    }
 
     /**
      * Converts Tika Metadata to a Map suitable for protobuf.
@@ -26,7 +24,7 @@ public class MetadataMapper {
      * @param config Configuration map containing processing options
      * @return A map of metadata key-value pairs
      */
-    public static Map<String, String> toMap(Metadata metadata, Map<String, String> config) {
+    public Map<String, String> toMap(Metadata metadata, Map<String, String> config) {
         Map<String, String> metadataMap = new HashMap<>();
         
         if (metadata == null) {
@@ -74,7 +72,7 @@ public class MetadataMapper {
      * @param metadata The Tika metadata object
      * @return A map of metadata key-value pairs
      */
-    public static Map<String, String> toMap(Metadata metadata) {
+    public Map<String, String> toMap(Metadata metadata) {
         return toMap(metadata, new HashMap<>());
     }
 

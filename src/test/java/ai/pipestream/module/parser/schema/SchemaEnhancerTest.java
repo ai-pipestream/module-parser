@@ -241,8 +241,8 @@ public class SchemaEnhancerTest {
     @Test
     public void testEnhanceSchema_handlesInvalidJson() throws Exception {
         // Test graceful handling of invalid JSON
-        String invalidJson = "{ invalid json }";
-        
+        String invalidJson = "not json at all";
+
         String result = schemaEnhancer.enhanceSchema(invalidJson);
         assertThat("Should return original on invalid JSON", result, is(invalidJson));
     }

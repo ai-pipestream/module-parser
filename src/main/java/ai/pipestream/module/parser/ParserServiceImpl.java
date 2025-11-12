@@ -55,6 +55,9 @@ public class ParserServiceImpl implements PipeStepProcessor {
     @Inject
     SchemaEnhancer schemaEnhancer;
 
+    @Inject
+    DocumentParser documentParser;
+
     @Override
     public Uni<ModuleProcessResponse> processData(ModuleProcessRequest request) {
         LOG.debugf("Parser service received document: %s", 
@@ -122,7 +125,7 @@ public class ParserServiceImpl implements PipeStepProcessor {
                                         .build();
                             } else {
                                 // Parse the document using Tika
-                                parsedDoc = DocumentParser.parseDocument(
+                                parsedDoc = documentParser.parseDocument(
                                     blobData,
                                     config,
                                     filename

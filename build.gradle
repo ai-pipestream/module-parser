@@ -77,6 +77,19 @@ test {
     systemProperty "java.util.logging.manager", "org.jboss.logmanager.LogManager"
     maxHeapSize = "10g"
     jvmArgs = ["-Xmx10g", "-XX:MaxMetaspaceSize=1g", "--add-opens", "java.base/java.lang=ALL-UNNAMED"]
+
+    // Propagate optional dataset locations passed via -D on the Gradle command line
+    // so the forked test JVM can see them.
+    def testDocsProp = System.getProperty("test.documents")
+    def sampleDocTypesProp = System.getProperty("sample.doc.types")
+    if (testDocsProp) {
+        systemProperty "test.documents", testDocsProp
+        println "[TEST CONFIG] Forwarded -Dtest.documents=${testDocsProp} to test JVM"
+    }
+    if (sampleDocTypesProp) {
+        systemProperty "sample.doc.types", sampleDocTypesProp
+        println "[TEST CONFIG] Forwarded -Dsample.doc.types=${sampleDocTypesProp} to test JVM"
+    }
 }
 
 compileJava {

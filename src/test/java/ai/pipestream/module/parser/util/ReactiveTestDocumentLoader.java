@@ -123,6 +123,15 @@ public class ReactiveTestDocumentLoader {
                 try {
                     // Prefer external directories if configured via env var or system property
                     Path external = resolveExternalResourceDir(resourceDir);
+                    if (external != null) {
+                        LOG.debugf("Resolved external path candidate for '%s': %s (exists: %s)",
+                                resourceDir, external, Files.exists(external));
+                    } else {
+                        LOG.debugf("No external path candidate resolved for '%s' (env TEST_DOCUMENTS=%s, SAMPLE_DOC_TYPES=%s)",
+                                resourceDir,
+                                System.getenv("TEST_DOCUMENTS"),
+                                System.getenv("SAMPLE_DOC_TYPES"));
+                    }
                     if (external != null && Files.isDirectory(external)) {
                         LOG.infof("Using external test resources for '%s' at: %s", resourceDir, external);
                         emitExternalResourceReferences(external, resourceDir, emitter);
@@ -380,17 +389,55 @@ public class ReactiveTestDocumentLoader {
                 prop.apply("sample.doc.types")
         );
 
+        // Helper to infer default base directory without cloning
+        java.util.function.Supplier<Path> inferDefaultBase = () -> {
+            try {
+                Path sibling = Paths.get("..", "sample-documents").normalize().toAbsolutePath();
+                if (Files.isDirectory(sibling)) return sibling;
+                Path tmp = Paths.get("/tmp", "sample-documents");
+                if (Files.isDirectory(tmp)) return tmp.toAbsolutePath();
+            } catch (Exception ignored) {
+            }
+            return null;
+        };
+
         if (normalized.startsWith("test-documents")) {
-            if (isBlank(testDocsRoot)) return null;
-            Path base = Paths.get(testDocsRoot);
+            Path base = null;
+            if (!isBlank(testDocsRoot)) {
+                base = Paths.get(testDocsRoot);
+            } else {
+                Path inferred = inferDefaultBase.get();
+                if (inferred != null && Files.isDirectory(inferred.resolve("test-documents"))) {
+                    base = inferred.resolve("test-documents");
+                    LOG.infof("Using inferred default TEST_DOCUMENTS at: %s", base);
+                }
+            }
+            if (base == null) {
+                LOG.debugf("TEST_DOCUMENTS not set and no inferred default found. Env TEST_DOCUMENTS=%s, system -Dtest.documents=%s",
+                        testDocsRoot, System.getProperty("test.documents"));
+            }
+            if (base == null) return null;
             String remainder = normalized.length() == "test-documents".length() ? "" : normalized.substring("test-documents".length());
             remainder = remainder.startsWith("/") ? remainder.substring(1) : remainder;
             return remainder.isEmpty() ? base : base.resolve(remainder);
         }
 
         if (normalized.startsWith("sample_doc_types")) {
-            if (isBlank(sampleTypesRoot)) return null;
-            Path base = Paths.get(sampleTypesRoot);
+            Path base = null;
+            if (!isBlank(sampleTypesRoot)) {
+                base = Paths.get(sampleTypesRoot);
+            } else {
+                Path inferred = inferDefaultBase.get();
+                if (inferred != null && Files.isDirectory(inferred.resolve("sample_doc_types"))) {
+                    base = inferred.resolve("sample_doc_types");
+                    LOG.infof("Using inferred default SAMPLE_DOC_TYPES at: %s", base);
+                }
+            }
+            if (base == null) {
+                LOG.debugf("SAMPLE_DOC_TYPES not set and no inferred default found. Env SAMPLE_DOC_TYPES=%s, system -Dsample.doc.types=%s",
+                        sampleTypesRoot, System.getProperty("sample.doc.types"));
+            }
+            if (base == null) return null;
             String remainder = normalized.length() == "sample_doc_types".length() ? "" : normalized.substring("sample_doc_types".length());
             remainder = remainder.startsWith("/") ? remainder.substring(1) : remainder;
             return remainder.isEmpty() ? base : base.resolve(remainder);

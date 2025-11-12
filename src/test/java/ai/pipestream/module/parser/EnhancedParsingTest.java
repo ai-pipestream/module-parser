@@ -25,8 +25,8 @@ import static org.hamcrest.Matchers.*;
  * Uses reactive document loading to test parser configuration options.
  */
 @QuarkusTest
-public class EnhancedParsingTestRefactored {
-    private static final Logger LOG = Logger.getLogger(EnhancedParsingTestRefactored.class);
+public class EnhancedParsingTest {
+    private static final Logger LOG = Logger.getLogger(EnhancedParsingTest.class);
 
     @Inject
     @GrpcClient

@@ -9,6 +9,7 @@ import io.smallrye.mutiny.Uni;
 import org.jboss.logging.Logger;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -21,22 +22,57 @@ import java.util.stream.Stream;
 /**
  * Reactive test document loader that streams files one at a time.
  * This avoids loading all test data into memory at once.
+ * Supports loading from both JAR resources (default) and external filesystem (override).
  */
 public class TestDocumentLoader {
     private static final Logger LOG = Logger.getLogger(TestDocumentLoader.class);
-    
+
     /**
-     * Load a single document from a file path.
+     * Represents a reference to a test resource without loading its content.
      */
-    public static Uni<PipeDoc> loadDocument(Path file) {
+    public static class ResourceReference {
+        public final String resourcePath;
+        public final String filename;
+        public final Path filePath; // non-null when using external filesystem
+        public final boolean external;
+
+        public ResourceReference(String resourcePath, String filename) {
+            this(resourcePath, filename, null, false);
+        }
+
+        public ResourceReference(String resourcePath, String filename, Path filePath, boolean external) {
+            this.resourcePath = resourcePath;
+            this.filename = filename;
+            this.filePath = filePath;
+            this.external = external;
+        }
+    }
+
+    /**
+     * Load a single document from a resource reference.
+     */
+    public static Uni<PipeDoc> loadDocument(ResourceReference ref) {
         return Uni.createFrom().item(() -> {
             try {
-                // Read file content
-                byte[] content = Files.readAllBytes(file);
-                String filename = file.getFileName().toString();
+                byte[] content;
+                if (ref.external && ref.filePath != null) {
+                    // Load from external filesystem
+                    content = Files.readAllBytes(ref.filePath);
+                } else {
+                    // Load from JAR resource using classloader
+                    InputStream inputStream = Thread.currentThread().getContextClassLoader()
+                            .getResourceAsStream(ref.resourcePath);
+                    if (inputStream == null) {
+                        throw new IOException("Could not load resource: " + ref.resourcePath);
+                    }
+                    try (inputStream) {
+                        content = inputStream.readAllBytes();
+                    }
+                }
+
                 // Don't use Files.probeContentType() as it can cause SIS library issues in tests
-                String mimeType = guessMimeType(filename);
-                
+                String mimeType = guessMimeType(ref.filename);
+
                 // Create a Blob with the new structure
                 String docId = UUID.randomUUID().toString();
                 Blob blob = Blob.newBuilder()
@@ -44,10 +80,10 @@ public class TestDocumentLoader {
                         .setDriveId("test-drive")
                         .setData(ByteString.copyFrom(content))
                         .setMimeType(mimeType)
-                        .setFilename(filename)
+                        .setFilename(ref.filename)
                         .setSizeBytes(content.length)
                         .build();
-                
+
                 // Create PipeDoc with blob
                 PipeDoc doc = PipeDoc.newBuilder()
                         .setDocId(docId)
@@ -55,13 +91,13 @@ public class TestDocumentLoader {
                                 .setBlob(blob)
                                 .build())
                         .build();
-                
-                LOG.debugf("Loaded document: %s (mime: %s, size: %d)", 
-                        filename, mimeType, content.length);
-                
+
+                LOG.debugf("Loaded document: %s (mime: %s, size: %d)",
+                        ref.filename, mimeType, content.length);
+
                 return doc;
             } catch (IOException e) {
-                throw new RuntimeException("Failed to load document: " + file, e);
+                throw new RuntimeException("Failed to load document: " + ref.resourcePath, e);
             }
         });
     }
@@ -70,31 +106,31 @@ public class TestDocumentLoader {
      * Stream all test documents from a resource directory.
      * Documents are loaded one at a time as the stream is consumed.
      * Works with both filesystem resources (dev mode) and JAR resources (test/prod mode).
-     * 
+     *
      * @param resourceDir The directory under test/resources to load from
      * @return A reactive Multi stream of PipeDoc instances
      */
     public static Multi<PipeDoc> streamTestDocuments(String resourceDir) {
-        // First stream the paths, then transform each path to a document
-        return streamResourcePaths(resourceDir)
+        // First stream the resource references, then transform each to a document
+        return streamResourceReferences(resourceDir)
                 .onItem().transformToUniAndConcatenate(TestDocumentLoader::loadDocument);
     }
-    
+
     /**
-     * Reactively streams the paths of resources within a given directory.
+     * Reactively streams resource references within a given directory.
      * Handles resources in both filesystem (dev mode) and JAR (test/prod mode).
-     * 
+     *
      * @param resourceDir The resource directory path
-     * @return A Multi<Path> that emits each resource path
+     * @return A Multi<ResourceReference> that emits each resource reference
      */
-    private static Multi<Path> streamResourcePaths(String resourceDir) {
+    private static Multi<ResourceReference> streamResourceReferences(String resourceDir) {
         return Multi.createFrom().emitter(emitter -> {
             try {
                 // Prefer external directories if configured via env var or system property
                 Path external = resolveExternalResourceDir(resourceDir);
                 if (external != null && Files.isDirectory(external)) {
                     LOG.infof("Using external test resources for '%s' at: %s", resourceDir, external);
-                    walkAndEmit(external, emitter);
+                    walkAndEmitExternal(external, resourceDir, emitter);
                     return;
                 }
 
@@ -112,12 +148,12 @@ public class TestDocumentLoader {
                     // For JARs, we need to open a FileSystem to walk the contents
                     try (FileSystem fileSystem = FileSystems.newFileSystem(uri, Collections.emptyMap())) {
                         Path resourcePath = fileSystem.getPath(resourceDir);
-                        walkAndEmit(resourcePath, emitter);
+                        walkAndEmitJar(resourcePath, resourceDir, emitter);
                     }
                 } else {
-                    // For regular filesystem, we can get the path directly
+                    // For regular filesystem in classpath, treat as JAR (use resource paths)
                     Path resourcePath = Paths.get(uri);
-                    walkAndEmit(resourcePath, emitter);
+                    walkAndEmitJar(resourcePath, resourceDir, emitter);
                 }
 
             } catch (IOException | URISyntaxException e) {
@@ -125,7 +161,6 @@ public class TestDocumentLoader {
                 emitter.fail(e);
             }
         });
-        // Note: We've already executed the blocking operation above
     }
 
     /**
@@ -185,13 +220,44 @@ public class TestDocumentLoader {
     }
     
     /**
-     * Helper method to walk a path and emit each file to the emitter.
+     * Walk external filesystem path and emit ResourceReference objects for external files.
      */
-    private static void walkAndEmit(Path path, io.smallrye.mutiny.subscription.MultiEmitter<? super Path> emitter) {
-        try (Stream<Path> walk = Files.walk(path)) {
+    private static void walkAndEmitExternal(Path basePath, String logicalResourceDir,
+                                            io.smallrye.mutiny.subscription.MultiEmitter<? super ResourceReference> emitter) {
+        try (Stream<Path> walk = Files.walk(basePath)) {
             walk.filter(Files::isRegularFile)
                 .sorted() // Ensure consistent ordering
-                .forEach(emitter::emit);
+                .forEach(filePath -> {
+                    String filename = filePath.getFileName().toString();
+                    Path relativePath = basePath.relativize(filePath);
+                    String displayPath = logicalResourceDir + "/" + relativePath.toString().replace('\\', '/');
+                    ResourceReference ref = new ResourceReference(displayPath, filename, filePath, true);
+                    emitter.emit(ref);
+                    LOG.tracef("Emitted external reference: %s -> %s", displayPath, filePath);
+                });
+            emitter.complete();
+        } catch (IOException e) {
+            emitter.fail(e);
+        }
+    }
+
+    /**
+     * Walk JAR/classpath path and emit ResourceReference objects for JAR resources.
+     */
+    private static void walkAndEmitJar(Path basePath, String resourceDir,
+                                       io.smallrye.mutiny.subscription.MultiEmitter<? super ResourceReference> emitter) {
+        try (Stream<Path> walk = Files.walk(basePath)) {
+            walk.filter(Files::isRegularFile)
+                .sorted() // Ensure consistent ordering
+                .forEach(filePath -> {
+                    String filename = filePath.getFileName().toString();
+                    // Build the full resource path for loading via classloader
+                    Path relativePath = basePath.relativize(filePath);
+                    String resourcePath = resourceDir + "/" + relativePath.toString().replace('\\', '/');
+                    ResourceReference ref = new ResourceReference(resourcePath, filename);
+                    emitter.emit(ref);
+                    LOG.tracef("Emitted JAR reference: %s", resourcePath);
+                });
             emitter.complete();
         } catch (IOException e) {
             emitter.fail(e);
@@ -200,14 +266,14 @@ public class TestDocumentLoader {
     
     /**
      * Stream test documents from a specific category.
-     * Categories correspond to subdirectories in test-documents.
-     * 
-     * @param category The category subdirectory (e.g., "sample_text", "sample_office_files")
+     * Categories correspond to directories at the root of the test-documents JAR.
+     *
+     * @param category The category directory (e.g., "sample_text", "sample_office_files")
      * @return A reactive Multi stream of PipeDoc instances
      */
     public static Multi<PipeDoc> streamTestDocumentsByCategory(String category) {
-        String path = "test-documents/" + category;
-        return streamTestDocuments(path);
+        // Resources are at root level in the JAR, not under "test-documents/" prefix
+        return streamTestDocuments(category);
     }
     
     /**
@@ -224,29 +290,14 @@ public class TestDocumentLoader {
     
     /**
      * Get a count of available test documents without loading them.
-     * 
+     *
      * @param resourceDir The directory to count files in
      * @return Uni with the count of files
      */
     public static Uni<Long> countTestDocuments(String resourceDir) {
-        return Uni.createFrom().item(() -> {
-            try {
-                var resource = TestDocumentLoader.class.getClassLoader().getResource(resourceDir);
-                if (resource == null) {
-                    return 0L;
-                }
-                
-                Path basePath = Paths.get(resource.toURI());
-                
-                return Files.walk(basePath)
-                        .filter(Files::isRegularFile)
-                        .count();
-                        
-            } catch (IOException | URISyntaxException e) {
-                LOG.errorf(e, "Failed to count documents in %s", resourceDir);
-                return 0L;
-            }
-        });
+        return streamResourceReferences(resourceDir)
+                .collect().asList()
+                .map(list -> (long) list.size());
     }
     
     /**

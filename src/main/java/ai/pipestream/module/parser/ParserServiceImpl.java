@@ -109,7 +109,7 @@ public class ParserServiceImpl implements PipeStepProcessor {
                             boolean isFontFile = (filename != null && filename.toLowerCase().matches(".*\\.(ttf|ttc|otf|woff2?|pfa|pfb)$"))
                                     || (blob.hasMimeType() && blob.getMimeType().toLowerCase().startsWith("font/"));
                             PipeDoc parsedDoc;
-                            LOG.warnf("FONT BYPASS CHECK: filename=%s, mime=%s, isFontFile=%s", filename, (blob.hasMimeType()? blob.getMimeType():""), isFontFile);
+                            LOG.debugf("FONT BYPASS CHECK: filename=%s, mime=%s, isFontFile=%s", filename, blob.hasMimeType() ? blob.getMimeType() : "", isFontFile);
                             if (isFontFile) {
                                 String title = filename;
                                 int dotIdx = filename.lastIndexOf('.');

@@ -97,10 +97,11 @@ public class ReactiveTestDocumentLoader {
     
     /**
      * Stream test documents from a specific category.
+     * Categories correspond to directories at the root of the test-documents JAR.
      */
     public static Multi<PipeDoc> streamTestDocumentsByCategory(String category) {
-        String path = "test-documents/" + category;
-        return streamTestDocuments(path);
+        // Resources are at root level in the JAR, not under "test-documents/" prefix
+        return streamTestDocuments(category);
     }
     
     /**

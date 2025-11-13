@@ -38,8 +38,8 @@ dependencies {
     testImplementation libs.pipestream.grpc.wiremock
 
     // Test data dependencies - sample documents published as Maven artifacts
-    testImplementation 'ai.pipestream.testdata:sample-doc-types:0.1.0-SNAPSHOT'
-    testImplementation 'ai.pipestream.testdata:test-documents:0.1.0-SNAPSHOT'
+    testImplementation 'ai.pipestream.testdata:sample-doc-types:0.1.1-SNAPSHOT'
+    testImplementation 'ai.pipestream.testdata:test-documents:0.1.1-SNAPSHOT'
     // Pipestream libraries - versions managed entirely by the BOM/catalog
     implementation libs.pipestream.compose.devservices
     implementation libs.pipestream.grpc.stubs
@@ -84,8 +84,9 @@ test {
 
     // Configure test document paths with fallback logic
     // Priority: 1) System property (-D), 2) Environment variable, 3) Auto-detected relative path
+    // Note: Tests now use JAR resources from Maven dependencies, not filesystem paths
 
-    // Test documents path (for general document testing)
+    // Test documents path (for general document testing) - set but not validated since we use JARs
     def testDocsProp = System.getProperty("test.documents")
     def testDocsEnv = System.getenv("TEST_DOCUMENTS")
     def testDocsDefault = "${project.rootDir}/../../sample-documents/test-documents"
@@ -94,7 +95,7 @@ test {
     systemProperty "test.documents", testDocsPath
     println "[TEST CONFIG] test.documents=${testDocsPath}"
 
-    // Sample document types path (for comprehensive document type testing)
+    // Sample document types path (for comprehensive document type testing) - set but not validated
     def sampleDocTypesProp = System.getProperty("sample.doc.types")
     def sampleDocTypesEnv = System.getenv("SAMPLE_DOC_TYPES")
     def sampleDocTypesDefault = "${project.rootDir}/../../sample-documents/sample_doc_types"
@@ -103,16 +104,8 @@ test {
     systemProperty "sample.doc.types", sampleDocTypesPath
     println "[TEST CONFIG] sample.doc.types=${sampleDocTypesPath}"
 
-    // Validate that the configured paths exist
-    def testDocsFile = new File(testDocsPath)
-    def sampleDocTypesFile = new File(sampleDocTypesPath)
-
-    if (!testDocsFile.exists()) {
-        println "[TEST CONFIG WARNING] test.documents path does not exist: ${testDocsPath}"
-    }
-    if (!sampleDocTypesFile.exists()) {
-        println "[TEST CONFIG WARNING] sample.doc.types path does not exist: ${sampleDocTypesPath}"
-    }
+    // Skip filesystem validation since we now use JAR resources from Maven dependencies
+    // The ReactiveTestDocumentLoader will fall back to JAR loading if filesystem paths don't exist
 }
 
 compileJava {

@@ -34,7 +34,8 @@ public class ImageGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "2000000")
                 .build();
 
-        var results = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/image")
+        // Use root-level path from sample-doc-types JAR (not sample_doc_types/image)
+        var results = ReactiveTestDocumentLoader.streamTestDocuments("image")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()
                 .await().atMost(Duration.ofMinutes(1));

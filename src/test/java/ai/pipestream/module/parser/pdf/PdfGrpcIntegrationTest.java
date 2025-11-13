@@ -40,7 +40,8 @@ public class PdfGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "2000000")
                 .build();
 
-        ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/pdf")
+        // Use root-level path from sample-doc-types JAR (not sample_doc_types/pdf)
+        ReactiveTestDocumentLoader.streamTestDocuments("pdf")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config)
                         .onItem().invoke(resp -> {
                             if (resp.getSuccess() && resp.hasOutputDoc()) {
@@ -80,8 +81,8 @@ public class PdfGrpcIntegrationTest {
                 .putConfigParams("extractMetadata", "true")
                 .build();
 
-        // Stream and filter for simple.pdf
-        var response = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/pdf")
+        // Stream and filter for simple.pdf (use root-level path from JAR)
+        var response = ReactiveTestDocumentLoader.streamTestDocuments("pdf")
                 .onItem().transformToUniAndConcatenate(doc -> {
                     // only pass through simple.pdf
                     String filename = doc.getBlobBag().getBlob().getFilename();

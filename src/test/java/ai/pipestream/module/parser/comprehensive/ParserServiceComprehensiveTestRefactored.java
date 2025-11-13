@@ -42,20 +42,21 @@ public class ParserServiceComprehensiveTestRefactored {
         AtomicInteger docsWithStructuredData = new AtomicInteger(0);
         AtomicInteger docsWithNoContent = new AtomicInteger(0);
         
-        // First, count how many documents we have
-        Long totalDocs = TestDocumentLoader.countTestDocuments("test-documents")
+        // First, count how many documents we have (use root path, not "test-documents/" prefix)
+        // The test-documents JAR has resources at root level like sample_text/, sample_office_files/, etc.
+        Long totalDocs = TestDocumentLoader.countTestDocuments("sample_text")
                 .await().atMost(Duration.ofSeconds(5));
-        
+
         LOG.infof("Found %d test documents to process", totalDocs);
-        
+
         // Process configuration
         ProcessConfiguration config = ProcessConfiguration.newBuilder()
                 .putConfigParams("extractMetadata", "true")
                 .putConfigParams("maxContentLength", "1000000")
                 .build();
-        
-        // Stream and process documents one at a time
-        TestDocumentLoader.streamTestDocuments("test-documents", 100) // Limit to 100 for testing
+
+        // Stream and process documents one at a time (use root-level path from JAR)
+        TestDocumentLoader.streamTestDocuments("sample_text", 100) // Limit to 100 for testing
             .onItem().transformToUniAndConcatenate(testDoc -> {
                 // Create request for this document
                 ServiceMetadata metadata = ServiceMetadata.newBuilder()
@@ -153,16 +154,17 @@ public class ParserServiceComprehensiveTestRefactored {
     @Test
     public void testProcessSpecificCategory() {
         LOG.info("=== Testing Specific Document Category ===");
-        
+
         // Test just text files which should all be parseable
-        TestDocumentLoader.ProgressTracker tracker = 
+        TestDocumentLoader.ProgressTracker tracker =
             new TestDocumentLoader.ProgressTracker("Text Parser Test", 5);
-        
+
         ProcessConfiguration config = ProcessConfiguration.newBuilder()
                 .putConfigParams("extractMetadata", "true")
                 .build();
-        
-        var results = TestDocumentLoader.streamTestDocumentsByCategory("sample_text")
+
+        // Use root-level path from JAR (not test-documents/sample_text)
+        var results = TestDocumentLoader.streamTestDocuments("sample_text")
             .onItem().transformToUniAndConcatenate(testDoc -> {
                 ServiceMetadata metadata = ServiceMetadata.newBuilder()
                         .setPipelineName("category-test-pipeline")

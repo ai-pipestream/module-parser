@@ -28,6 +28,18 @@ dependencyResolutionManagement {
         // Maven Central (always available, default for public builds)
         mavenCentral()
 
+        // GitHub Packages for ai.pipestream artifacts
+        maven {
+            url = uri("https://maven.pkg.github.com/ai-pipestream/pipeline-bom")
+            credentials {
+                username = providers.systemProperty("gpr.user").orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
+                password = providers.systemProperty("gpr.token").orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
+            }
+            content {
+                includeGroupByRegex "ai\\.pipestream(\\..*)?"
+            }
+        }
+
         // Maven Central Snapshots for consuming published SNAPSHOTs
         maven {
             url = uri('https://oss.sonatype.org/content/repositories/snapshots/')

@@ -28,7 +28,7 @@ dependencyResolutionManagement {
         // Maven Central (always available, default for public builds)
         mavenCentral()
 
-        // Maven Central Snapshots for consuming published SNAPSHOTs
+        // Maven Central Snapshots for consuming published SNAPSHOT versions
         maven {
             url = uri('https://oss.sonatype.org/content/repositories/snapshots/')
             mavenContent {

@@ -1,5 +1,6 @@
 # Tika Metadata Enhancement TODO
 
+
 ## 🎯 Project Overview
 **ENHANCE** (not replace) the existing Tika parser to extract comprehensive metadata into our new protobuf structures **in addition to** the current functionality.
 

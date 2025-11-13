@@ -82,30 +82,40 @@ test {
     maxHeapSize = "10g"
     jvmArgs = ["-Xmx10g", "-XX:MaxMetaspaceSize=1g", "--add-opens", "java.base/java.lang=ALL-UNNAMED"]
 
-    // Configure test document paths with fallback logic
-    // Priority: 1) System property (-D), 2) Environment variable, 3) Auto-detected relative path
-    // Note: Tests now use JAR resources from Maven dependencies, not filesystem paths
-
-    // Test documents path (for general document testing) - set but not validated since we use JARs
+    // Tests now use JAR resources from Maven dependencies by default
+    // test-documents JAR: ai.pipestream.testdata:test-documents:0.1.1-SNAPSHOT
+    // sample-doc-types JAR: ai.pipestream.testdata:sample-doc-types:0.1.1-SNAPSHOT
+    //
+    // Optional: Set environment variables or system properties to override with filesystem paths for local dev:
+    //   export TEST_DOCUMENTS=/path/to/sample-documents/test-documents
+    //   export SAMPLE_DOC_TYPES=/path/to/sample-documents/sample_doc_types
+    // Or:
+    //   ./gradlew test -Dtest.documents=/path -Dsample.doc.types=/path
+    //
+    // Only set system properties if explicitly provided (don't default to filesystem)
     def testDocsProp = System.getProperty("test.documents")
     def testDocsEnv = System.getenv("TEST_DOCUMENTS")
-    def testDocsDefault = "${project.rootDir}/../../sample-documents/test-documents"
+    if (testDocsProp) {
+        systemProperty "test.documents", testDocsProp
+        println "[TEST CONFIG] Using explicit test.documents=${testDocsProp}"
+    } else if (testDocsEnv) {
+        systemProperty "test.documents", testDocsEnv
+        println "[TEST CONFIG] Using env TEST_DOCUMENTS=${testDocsEnv}"
+    } else {
+        println "[TEST CONFIG] Using JAR resources for test-documents (no filesystem override)"
+    }
 
-    def testDocsPath = testDocsProp ?: testDocsEnv ?: testDocsDefault
-    systemProperty "test.documents", testDocsPath
-    println "[TEST CONFIG] test.documents=${testDocsPath}"
-
-    // Sample document types path (for comprehensive document type testing) - set but not validated
     def sampleDocTypesProp = System.getProperty("sample.doc.types")
     def sampleDocTypesEnv = System.getenv("SAMPLE_DOC_TYPES")
-    def sampleDocTypesDefault = "${project.rootDir}/../../sample-documents/sample_doc_types"
-
-    def sampleDocTypesPath = sampleDocTypesProp ?: sampleDocTypesEnv ?: sampleDocTypesDefault
-    systemProperty "sample.doc.types", sampleDocTypesPath
-    println "[TEST CONFIG] sample.doc.types=${sampleDocTypesPath}"
-
-    // Skip filesystem validation since we now use JAR resources from Maven dependencies
-    // The ReactiveTestDocumentLoader will fall back to JAR loading if filesystem paths don't exist
+    if (sampleDocTypesProp) {
+        systemProperty "sample.doc.types", sampleDocTypesProp
+        println "[TEST CONFIG] Using explicit sample.doc.types=${sampleDocTypesProp}"
+    } else if (sampleDocTypesEnv) {
+        systemProperty "sample.doc.types", sampleDocTypesEnv
+        println "[TEST CONFIG] Using env SAMPLE_DOC_TYPES=${sampleDocTypesEnv}"
+    } else {
+        println "[TEST CONFIG] Using JAR resources for sample-doc-types (no filesystem override)"
+    }
 }
 
 compileJava {

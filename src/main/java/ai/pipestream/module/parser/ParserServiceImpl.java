@@ -543,6 +543,16 @@ public class ParserServiceImpl implements PipeStepProcessor {
             }
         } catch (Exception ignored) {}
 
+        // Post-process: Extract XMP Rights from images (same as in DocumentParser)
+        try {
+            String mimeType = metadata.get("Content-Type");
+            if (mimeType != null && mimeType.startsWith("image/")) {
+                documentParser.extractXMPRightsPublic(content, metadata);
+            }
+        } catch (Exception e) {
+            LOG.debugf("Could not extract XMP Rights in extractTikaResponse: %s", e.getMessage());
+        }
+
         return TikaMetadataExtractor.extractComprehensiveMetadata(metadata, parser.getClass().getName(), extractedText, docId);
     }
 }

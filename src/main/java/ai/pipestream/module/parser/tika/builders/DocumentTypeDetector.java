@@ -255,7 +255,9 @@ public class DocumentTypeDetector {
      */
     private static boolean hasCreativeCommonsMetadata(Metadata metadata) {
         String[] allFields = metadata.names();
-        
+
+        LOG.debugf("Checking for Creative Commons metadata among %d fields", allFields.length);
+
         for (String field : allFields) {
             String lowerField = field.toLowerCase();
             if (lowerField.contains("license") ||
@@ -263,12 +265,15 @@ public class DocumentTypeDetector {
                 lowerField.contains("cc:") ||
                 lowerField.contains("rights")) {
                 String value = metadata.get(field);
+                LOG.debugf("  Field '%s' matches CC pattern, value: %s", field, value);
                 if (value != null && value.toLowerCase().contains("creative")) {
+                    LOG.infof("Detected Creative Commons via field '%s' = '%s'", field, value);
                     return true;
                 }
             }
         }
-        
+
+        LOG.debugf("No Creative Commons metadata detected");
         return false;
     }
 }

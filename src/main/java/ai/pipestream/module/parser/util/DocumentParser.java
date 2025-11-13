@@ -44,6 +44,7 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import org.apache.tika.mime.MediaType;
+import org.apache.tika.metadata.XMPRights;
 
 /**
  * CDI bean for parsing documents using Apache Tika.
@@ -191,7 +192,17 @@ public class DocumentParser {
                 }
             }
         }
-        
+
+        // Post-process: Extract XMP Rights metadata if this is an image with XMP
+        try {
+            String mimeType = metadata.get(org.apache.tika.metadata.Metadata.CONTENT_TYPE);
+            if (mimeType != null && mimeType.startsWith("image/")) {
+                extractXMPRights(content, metadata);
+            }
+        } catch (Exception e) {
+            LOG.debugf("Could not extract XMP Rights: %s", e.getMessage());
+        }
+
         // Extract title and body
         String handlerContent = handler.toString();
         String title = extractTitle(metadata, handlerContent, configMap);
@@ -755,13 +766,158 @@ public class DocumentParser {
     public static Set<String> getSupportedMimeTypes() {
         // Get the default Tika configuration which contains the media type registry
         TikaConfig config = TikaConfig.getDefaultConfig();
-        
+
         // Get the registry and then get all the media types from it
         Set<MediaType> mediaTypes = config.getMediaTypeRegistry().getTypes();
-        
+
         // Convert the Set<MediaType> to a Set<String> for easier use
         return mediaTypes.stream()
                          .map(MediaType::toString)
                          .collect(Collectors.toSet());
+    }
+
+    /**
+     * Public wrapper for XMP Rights extraction - allows other components to use this functionality.
+     *
+     * @param content The image file content
+     * @param metadata The Tika metadata to populate
+     */
+    public void extractXMPRightsPublic(com.google.protobuf.ByteString content, Metadata metadata) {
+        extractXMPRights(content, metadata);
+    }
+
+    /**
+     * Extracts XMP Rights metadata from image content.
+     * This is a post-processing step that reads XMP data using Adobe XMPCore
+     * to extract Creative Commons and Rights metadata that Tika's standard parsers miss.
+     *
+     * @param content The image file content
+     * @param metadata The Tika metadata to populate
+     */
+    private void extractXMPRights(ByteString content, Metadata metadata) {
+        LOG.debugf("Attempting to extract XMP Rights from image content (%d bytes)", content.size());
+        try (ByteArrayInputStream bis = new ByteArrayInputStream(content.toByteArray())) {
+            // Use ImageMetadataExtractor which knows how to extract XMP from image formats
+            byte[] xmpPacket = extractXMPPacket(bis);
+            if (xmpPacket == null || xmpPacket.length == 0) {
+                LOG.tracef("No XMP packet found in image");
+                return;
+            }
+
+            LOG.debugf("Found XMP packet (%d bytes), parsing for Rights metadata", xmpPacket.length);
+
+            // Parse the XMP packet with Adobe XMPCore
+            try (ByteArrayInputStream xmpStream = new ByteArrayInputStream(xmpPacket)) {
+                com.adobe.internal.xmp.XMPMeta xmpMeta =
+                    com.adobe.internal.xmp.XMPMetaFactory.parse(xmpStream);
+
+                // Extract XMP Rights properties
+                extractXMPRightsFromAdobe(xmpMeta, metadata);
+            }
+        } catch (Exception e) {
+            LOG.debugf("Could not extract XMP Rights: %s - %s", e.getClass().getSimpleName(), e.getMessage());
+        }
+    }
+
+    /**
+     * Extract the raw XMP packet from an image stream
+     */
+    private byte[] extractXMPPacket(InputStream imageStream) throws IOException {
+        // Use Tika's XMP packet scanner
+        org.apache.tika.parser.xmp.XMPPacketScanner scanner =
+            new org.apache.tika.parser.xmp.XMPPacketScanner();
+
+        try (java.io.ByteArrayOutputStream xmpOut = new java.io.ByteArrayOutputStream()) {
+            boolean found = scanner.parse(imageStream, xmpOut);
+            if (found && xmpOut.size() > 0) {
+                return xmpOut.toByteArray();
+            }
+            return null;
+        } catch (Exception e) {
+            LOG.tracef("Error scanning for XMP packet: %s", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Extract XMP Rights properties using Adobe XMPCore library
+     */
+    private void extractXMPRightsFromAdobe(com.adobe.internal.xmp.XMPMeta xmpMeta, Metadata metadata) {
+        if (xmpMeta == null) {
+            return;
+        }
+
+        try {
+            String rightsNS = "http://ns.adobe.com/xap/1.0/rights/";
+
+            // Extract WebStatement
+            try {
+                com.adobe.internal.xmp.properties.XMPProperty prop =
+                    xmpMeta.getProperty(rightsNS, "WebStatement");
+                if (prop != null && prop.getValue() != null) {
+                    metadata.set(XMPRights.WEB_STATEMENT, prop.getValue());
+                    LOG.infof("Extracted WebStatement: %s", prop.getValue());
+                } else {
+                    LOG.debugf("WebStatement property was null or had no value");
+                }
+            } catch (Exception e) {
+                LOG.tracef("No WebStatement: %s", e.getMessage());
+            }
+
+            // Extract UsageTerms
+            try {
+                com.adobe.internal.xmp.properties.XMPProperty prop =
+                    xmpMeta.getProperty(rightsNS, "UsageTerms");
+                if (prop != null && prop.getValue() != null) {
+                    metadata.set(XMPRights.USAGE_TERMS, prop.getValue());
+                    LOG.debugf("Extracted UsageTerms: %s", prop.getValue());
+                }
+            } catch (Exception e) {
+                LOG.tracef("No UsageTerms: %s", e.getMessage());
+            }
+
+            // Extract Marked
+            try {
+                com.adobe.internal.xmp.properties.XMPProperty prop =
+                    xmpMeta.getProperty(rightsNS, "Marked");
+                if (prop != null && prop.getValue() != null) {
+                    metadata.set(XMPRights.MARKED, prop.getValue());
+                    LOG.debugf("Extracted Marked: %s", prop.getValue());
+                }
+            } catch (Exception e) {
+                LOG.tracef("No Marked: %s", e.getMessage());
+            }
+
+            // Extract Certificate
+            try {
+                com.adobe.internal.xmp.properties.XMPProperty prop =
+                    xmpMeta.getProperty(rightsNS, "Certificate");
+                if (prop != null && prop.getValue() != null) {
+                    metadata.set(XMPRights.CERTIFICATE, prop.getValue());
+                    LOG.debugf("Extracted Certificate: %s", prop.getValue());
+                }
+            } catch (Exception e) {
+                LOG.tracef("No Certificate: %s", e.getMessage());
+            }
+
+            // Extract Owner (array property)
+            try {
+                int count = xmpMeta.countArrayItems(rightsNS, "Owner");
+                for (int i = 1; i <= count; i++) {
+                    com.adobe.internal.xmp.properties.XMPProperty prop =
+                        xmpMeta.getArrayItem(rightsNS, "Owner", i);
+                    if (prop != null && prop.getValue() != null) {
+                        metadata.add(XMPRights.OWNER.getName(), prop.getValue());
+                        LOG.debugf("Extracted Owner: %s", prop.getValue());
+                    }
+                }
+            } catch (Exception e) {
+                LOG.tracef("No Owner array: %s", e.getMessage());
+            }
+
+            LOG.infof("Successfully extracted XMP Rights metadata from image");
+        } catch (Exception e) {
+            LOG.debugf("Error extracting XMP Rights: %s", e.getMessage());
+        }
     }
 }

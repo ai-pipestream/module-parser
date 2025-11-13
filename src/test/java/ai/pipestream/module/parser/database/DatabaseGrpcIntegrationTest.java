@@ -32,7 +32,7 @@ public class DatabaseGrpcIntegrationTest {
     @Test
     public void testProcessSampleDatabasesViaGrpc() {
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/database")
+                .countTestDocuments("database")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No sample database files found under sample_doc_types/database");
 
@@ -46,7 +46,7 @@ public class DatabaseGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "5000000")
                 .build();
 
-        var results = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/database")
+        var results = ReactiveTestDocumentLoader.streamTestDocuments("database")
                 .select().where(doc -> allow.contains(doc.getBlobBag().getBlob().getFilename()))
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()

@@ -28,7 +28,7 @@ public class MarkdownGrpcIntegrationTest {
     @Test
     public void testProcessSampleMarkdownViaGrpc() {
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/markdown")
+                .countTestDocuments("markdown")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No sample Markdown files found under sample_doc_types/markdown");
 
@@ -37,7 +37,7 @@ public class MarkdownGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "100000")
                 .build();
 
-        var results = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/markdown")
+        var results = ReactiveTestDocumentLoader.streamTestDocuments("markdown")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()
                 .await().atMost(Duration.ofMinutes(1));

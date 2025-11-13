@@ -31,7 +31,7 @@ public class HtmlGrpcIntegrationTest {
     @Test
     public void testProcessSampleHtmlViaGrpc() {
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/html")
+                .countTestDocuments("html")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No sample HTML files found under sample_doc_types/html");
 
@@ -40,7 +40,7 @@ public class HtmlGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "2000000")
                 .build();
 
-        var results = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/html")
+        var results = ReactiveTestDocumentLoader.streamTestDocuments("html")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()
                 .await().atMost(Duration.ofMinutes(1));
@@ -84,7 +84,7 @@ public class HtmlGrpcIntegrationTest {
     @Test
     public void testLinksHtmlHasDiscoveredLinks() {
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/html")
+                .countTestDocuments("html")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No sample HTML files found under sample_doc_types/html");
 
@@ -93,7 +93,7 @@ public class HtmlGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "2000000")
                 .build();
 
-        ModuleProcessResponse resp = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/html")
+        ModuleProcessResponse resp = ReactiveTestDocumentLoader.streamTestDocuments("html")
                 .onItem().transformToUniAndConcatenate(doc -> {
                     String filename = doc.getBlobBag().getBlob().getFilename();
                     if (!"links.html".equalsIgnoreCase(filename)) {

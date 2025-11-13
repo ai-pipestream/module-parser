@@ -31,7 +31,7 @@ public class CreativeCommonsGrpcIntegrationTest {
     @Test
     public void testProcessCreativeCommonsSamplesViaGrpc() {
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/creative_commons")
+                .countTestDocuments("creative_commons")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No CC samples found under sample_doc_types/creative_commons");
 
@@ -40,7 +40,7 @@ public class CreativeCommonsGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "5000000")
                 .build();
 
-        var results = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/creative_commons")
+        var results = ReactiveTestDocumentLoader.streamTestDocuments("creative_commons")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()
                 .await().atMost(Duration.ofMinutes(2));

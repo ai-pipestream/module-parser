@@ -31,7 +31,7 @@ public class FontGrpcIntegrationTest {
     @Test
     public void testProcessSampleFontsViaGrpc() {
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/font")
+                .countTestDocuments("font")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No sample fonts found under sample_doc_types/font");
 
@@ -40,7 +40,7 @@ public class FontGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "5000000")
                 .build();
 
-        var results = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/font")
+        var results = ReactiveTestDocumentLoader.streamTestDocuments("font")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()
                 .await().atMost(Duration.ofMinutes(1));

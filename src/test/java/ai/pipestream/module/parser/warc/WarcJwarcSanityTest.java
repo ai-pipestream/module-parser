@@ -19,10 +19,11 @@ import static org.hamcrest.Matchers.greaterThan;
 public class WarcJwarcSanityTest {
     @Test
     public void sanityReadFirstRecordWithJwarc() throws Exception {
+        // Use root-level paths from sample-doc-types JAR (not sample_doc_types/ prefix)
         List<String> files = Arrays.asList(
-                "sample_doc_types/warc/sample-tiny-566b.warc.gz",
-                "sample_doc_types/warc/sample-small-336kb.warc.gz",
-                "sample_doc_types/warc/sample-medium-646kb.warc.gz"
+                "warc/sample-tiny-566b.warc.gz",
+                "warc/sample-small-336kb.warc.gz",
+                "warc/sample-medium-646kb.warc.gz"
         );
         int ok = 0;
         for (String p : files) {
@@ -49,14 +50,13 @@ public class WarcJwarcSanityTest {
                 System.getenv("SAMPLE_DOC_TYPES"),
                 System.getProperty("sample.doc.types")
         );
-        if (logicalPath.startsWith("sample_doc_types/") && sampleTypesRoot != null && !sampleTypesRoot.isBlank()) {
-            String remainder = logicalPath.substring("sample_doc_types/".length());
-            Path p = Paths.get(sampleTypesRoot).resolve(remainder);
+        if (sampleTypesRoot != null && !sampleTypesRoot.isBlank()) {
+            Path p = Paths.get(sampleTypesRoot).resolve(logicalPath);
             if (Files.exists(p)) {
                 return Files.newInputStream(p);
             }
         }
-        // Fallback to classpath
+        // Fallback to classpath (resources are at root level in JAR)
         ClassLoader cl = Thread.currentThread().getContextClassLoader();
         return cl.getResourceAsStream(logicalPath);
     }

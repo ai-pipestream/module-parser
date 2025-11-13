@@ -40,7 +40,8 @@ public class OfficeGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "3000000")
                 .build();
 
-        ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/office")
+        // Use root-level path from sample-doc-types JAR (not sample_doc_types/office)
+        ReactiveTestDocumentLoader.streamTestDocuments("office")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config)
                         .onItem().invoke(resp -> {
                             if (resp.getSuccess() && resp.hasOutputDoc()) {

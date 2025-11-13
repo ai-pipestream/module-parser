@@ -32,7 +32,7 @@ public class EmailGrpcIntegrationTest {
     public void testProcessSampleEmailsViaGrpc() {
         // Skip if folder has no samples
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/email")
+                .countTestDocuments("email")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No sample emails found under sample_doc_types/email");
 
@@ -41,7 +41,7 @@ public class EmailGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "2000000")
                 .build();
 
-        var results = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/email")
+        var results = ReactiveTestDocumentLoader.streamTestDocuments("email")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()
                 .await().atMost(Duration.ofMinutes(1));

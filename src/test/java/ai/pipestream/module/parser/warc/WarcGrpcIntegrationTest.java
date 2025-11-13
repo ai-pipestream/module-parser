@@ -34,7 +34,7 @@ public class WarcGrpcIntegrationTest {
         Assumptions.assumeTrue(false, "TODO: Provide validated WARC samples; skipping WARC integration test for now");
 
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/warc")
+                .countTestDocuments("warc")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No sample WARC files found under sample_doc_types/warc");
 
@@ -47,7 +47,7 @@ public class WarcGrpcIntegrationTest {
         java.util.Set<String> allow = new java.util.HashSet<>();
         allow.add("sample-tiny-566b.warc.gz");
 
-        var results = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/warc")
+        var results = ReactiveTestDocumentLoader.streamTestDocuments("warc")
                 .select().where(doc -> allow.contains(doc.getBlobBag().getBlob().getFilename()))
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()

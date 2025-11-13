@@ -44,7 +44,8 @@ public class OfficeFieldCoverageTest {
         AtomicInteger processed = new AtomicInteger(0);
         AtomicInteger typedOffice = new AtomicInteger(0);
 
-        ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/office")
+        // Use root-level path from sample-doc-types JAR (not sample_doc_types/office)
+        ReactiveTestDocumentLoader.streamTestDocuments("office")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config)
                         .onItem().invoke(resp -> {
                             processed.incrementAndGet();

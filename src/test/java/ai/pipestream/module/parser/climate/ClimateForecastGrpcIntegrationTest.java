@@ -32,7 +32,7 @@ public class ClimateForecastGrpcIntegrationTest {
     @Test
     public void testProcessSampleNetcdfViaGrpc() {
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/climate")
+                .countTestDocuments("climate")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No NetCDF samples found under sample_doc_types/climate");
 
@@ -41,7 +41,7 @@ public class ClimateForecastGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "5000000")
                 .build();
 
-        var results = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/climate")
+        var results = ReactiveTestDocumentLoader.streamTestDocuments("climate")
                 .select().where(doc -> doc.getBlobBag().getBlob().getFilename().toLowerCase().endsWith(".nc"))
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()

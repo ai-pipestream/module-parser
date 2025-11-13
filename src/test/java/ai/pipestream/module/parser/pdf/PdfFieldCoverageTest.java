@@ -47,7 +47,8 @@ public class PdfFieldCoverageTest {
         AtomicInteger genericTypedCount = new AtomicInteger(0);
         AtomicInteger additionalStructNonEmpty = new AtomicInteger(0);
 
-        ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/pdf")
+        // Use root-level path from sample-doc-types JAR (not sample_doc_types/pdf)
+        ReactiveTestDocumentLoader.streamTestDocuments("pdf")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config)
                         .onItem().invoke(resp -> {
                             docsParsed.incrementAndGet();

@@ -32,7 +32,7 @@ public class MediaGrpcIntegrationTest {
     @Test
     public void testProcessSampleMediaViaGrpc() {
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/media")
+                .countTestDocuments("media")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No sample media files found under sample_doc_types/media");
 
@@ -46,7 +46,7 @@ public class MediaGrpcIntegrationTest {
                 "En-us-cat.ogg", "En-us-hello.ogg", "En-us-yes.ogg"
         );
 
-        var results = ReactiveTestDocumentLoader.streamTestDocuments("sample_doc_types/media")
+        var results = ReactiveTestDocumentLoader.streamTestDocuments("media")
                 .select().where(doc -> allow.contains(doc.getBlobBag().getBlob().getFilename()))
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()

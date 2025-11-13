@@ -178,8 +178,8 @@ public class EnhancedParsingTest {
         AtomicInteger totalDocs = new AtomicInteger(0);
         AtomicInteger docsWithContent = new AtomicInteger(0);
         
-        // Test with a small set
-        ReactiveTestDocumentLoader.streamTestDocuments("test-documents/sample_text", 10)
+        // Test with a small set (use root-level path from JAR)
+        ReactiveTestDocumentLoader.streamTestDocuments("sample_text", 10)
             .onItem().transformToUniAndConcatenate(testDoc -> {
                 ServiceMetadata metadata = ServiceMetadata.newBuilder()
                         .setPipelineName("minimal-parsing-test")

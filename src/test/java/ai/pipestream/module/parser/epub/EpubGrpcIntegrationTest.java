@@ -31,7 +31,7 @@ public class EpubGrpcIntegrationTest {
     @Test
     public void testProcessSampleEpubsViaGrpc() {
         long available = ReactiveTestDocumentLoader
-                .countTestDocuments("sample_doc_types/ebooks/epub")
+                .countTestDocuments("ebooks/epub")
                 .await().atMost(Duration.ofSeconds(5));
         Assumptions.assumeTrue(available > 0, "No sample EPUBs found under sample_doc_types/epub");
 
@@ -40,7 +40,7 @@ public class EpubGrpcIntegrationTest {
                 .putConfigParams("maxContentLength", "5000000")
                 .build();
 
-        var results = ReactiveTestDocumentLoader.streamTestDocumentsWithExtension("sample_doc_types/ebooks/epub", ".epub")
+        var results = ReactiveTestDocumentLoader.streamTestDocumentsWithExtension("ebooks/epub", ".epub")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()
                 .await().atMost(Duration.ofMinutes(2));

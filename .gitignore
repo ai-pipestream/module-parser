@@ -288,3 +288,4 @@ dist
 build
 .idea/
 *.iml
+.claude

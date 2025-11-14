@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 
 /**
  * Reactive test document loader that properly handles both filesystem and JAR resources.
- * 
+ * <p>
  * Key design principles:
  * 1. Emit resource REFERENCES (paths/names) first - lightweight objects
  * 2. Load actual content ONLY when the downstream subscriber requests it  
@@ -113,78 +113,13 @@ public class ReactiveTestDocumentLoader {
                 .map(list -> (long) list.size());
     }
 
-    /**
-     * Validate that test document configuration is properly set up.
-     * This should be called at the beginning of tests that require sample documents.
-     * Throws an exception with clear instructions if configuration is missing.
-     */
-    public static void validateTestDocumentConfiguration() {
-        String testDocsPath = System.getProperty("test.documents");
-        String sampleTypesPath = System.getProperty("sample.doc.types");
-        String testDocsEnv = System.getenv("TEST_DOCUMENTS");
-        String sampleTypesEnv = System.getenv("SAMPLE_DOC_TYPES");
-
-        boolean hasTestDocs = !isBlank(testDocsPath) || !isBlank(testDocsEnv);
-        boolean hasSampleTypes = !isBlank(sampleTypesPath) || !isBlank(sampleTypesEnv);
-
-        // Check if paths actually exist
-        boolean testDocsExists = false;
-        boolean sampleTypesExists = false;
-
-        if (hasTestDocs) {
-            String path = firstNonBlank(testDocsPath, testDocsEnv);
-            testDocsExists = path != null && Files.exists(Paths.get(path));
-        }
-
-        if (hasSampleTypes) {
-            String path = firstNonBlank(sampleTypesPath, sampleTypesEnv);
-            sampleTypesExists = path != null && Files.exists(Paths.get(path));
-        }
-
-        // If neither is configured, check if automatic inference worked
-        if (!hasTestDocs && !hasSampleTypes) {
-            Path inferred = Paths.get("../../sample-documents");
-            if (Files.exists(inferred)) {
-                LOG.info("Sample documents found via automatic inference - configuration is valid");
-                return;
-            }
-        }
-
-        // If configured but paths don't exist, that's an error
-        if ((hasTestDocs && !testDocsExists) || (hasSampleTypes && !sampleTypesExists)) {
-            StringBuilder error = new StringBuilder();
-            error.append("Test document configuration error:\n");
-
-            if (hasTestDocs && !testDocsExists) {
-                error.append("- TEST_DOCUMENTS path does not exist: ").append(firstNonBlank(testDocsPath, testDocsEnv)).append("\n");
-            }
-            if (hasSampleTypes && !sampleTypesExists) {
-                error.append("- SAMPLE_DOC_TYPES path does not exist: ").append(firstNonBlank(sampleTypesPath, sampleTypesEnv)).append("\n");
-            }
-
-            error.append("\nTo fix this:\n");
-            error.append("1. Set environment variables:\n");
-            error.append("   export TEST_DOCUMENTS=/path/to/sample-documents/test-documents\n");
-            error.append("   export SAMPLE_DOC_TYPES=/path/to/sample-documents/sample_doc_types\n");
-            error.append("\n2. Or use system properties:\n");
-            error.append("   ./gradlew test -Dtest.documents=/path/to/sample-documents/test-documents -Dsample.doc.types=/path/to/sample-documents/sample_doc_types\n");
-            error.append("\n3. Or ensure sample-documents directory exists at: ").append(Paths.get("../../sample-documents").toAbsolutePath());
-
-            throw new IllegalStateException(error.toString());
-        }
-
-        // If configuration is valid, log success
-        if (testDocsExists || sampleTypesExists) {
-            LOG.info("Test document configuration validated successfully");
-        }
-    }
     
     /**
      * Emit resource references without loading content.
      * This is where we handle the filesystem vs JAR distinction.
      */
     private static Multi<ResourceReference> streamResourceReferences(String resourceDir) {
-        return Multi.createFrom().<ResourceReference>emitter(emitter -> {
+        return Multi.createFrom().emitter(emitter -> {
             // Run the blocking I/O operations on a worker thread
             Infrastructure.getDefaultWorkerPool().execute(() -> {
                 try {
@@ -460,35 +395,11 @@ public class ReactiveTestDocumentLoader {
         // Helper to infer default base directory with multiple fallback strategies
         java.util.function.Supplier<Path> inferDefaultBase = () -> {
             try {
-                // Strategy 1: Check relative to project root (common in multi-module projects)
-                Path projectRelative = Paths.get("../../sample-documents").normalize().toAbsolutePath();
-                if (Files.isDirectory(projectRelative)) {
-                    LOG.debugf("Found sample-documents at project relative path: %s", projectRelative);
-                    return projectRelative;
-                }
-
-                // Strategy 2: Check one level up (original logic)
-                Path sibling = Paths.get("../sample-documents").normalize().toAbsolutePath();
-                if (Files.isDirectory(sibling)) {
-                    LOG.debugf("Found sample-documents at sibling path: %s", sibling);
-                    return sibling;
-                }
-
-                // Strategy 3: Check common CI/build directories
-                Path tmp = Paths.get("/tmp", "sample-documents");
+                // Check /tmp/sample-docs as the default location
+                Path tmp = Paths.get("/tmp", "sample-docs");
                 if (Files.isDirectory(tmp)) {
                     LOG.debugf("Found sample-documents in /tmp: %s", tmp);
                     return tmp.toAbsolutePath();
-                }
-
-                // Strategy 4: Check user home for development
-                String userHome = System.getProperty("user.home");
-                if (userHome != null) {
-                    Path homePath = Paths.get(userHome, "sample-documents");
-                    if (Files.isDirectory(homePath)) {
-                        LOG.debugf("Found sample-documents in user home: %s", homePath);
-                        return homePath;
-                    }
                 }
 
                 LOG.debug("No sample-documents directory found using any inference strategy");

@@ -83,10 +83,15 @@ public class SchemaEnhancer {
                 String fieldName = entry.getKey();
                 JsonNode fieldSchema = entry.getValue();
                 
-                // Look for supportedMimeTypes field
+                // Look for supportedMimeTypes field - only enhance if it's an array type
                 if (fieldName.equals("supportedMimeTypes") && fieldSchema instanceof ObjectNode) {
-                    LOG.debugf("Found supportedMimeTypes field, enhancing with Tika MIME types");
-                    enhanceMimeTypeField((ObjectNode) fieldSchema);
+                    // Only enhance array fields, skip string/other types
+                    if (fieldSchema.has("type") && "array".equals(fieldSchema.get("type").asText())) {
+                        LOG.debugf("Found supportedMimeTypes array field, enhancing with Tika MIME types");
+                        enhanceMimeTypeField((ObjectNode) fieldSchema);
+                    } else {
+                        LOG.debugf("Found supportedMimeTypes field but it's not an array type, skipping enhancement");
+                    }
                 }
                 
                 // Recursively process nested objects

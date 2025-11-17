@@ -1,11 +1,27 @@
+import org.apache.tools.ant.filters.ReplaceTokens
+import org.gradle.plugins.signing.Sign
+
 plugins {
+    id 'pl.allegro.tech.build.axion-release' version '1.21.0'
     alias(libs.plugins.java)
     alias(libs.plugins.quarkus)
     alias(libs.plugins.maven.publish)
     id 'signing'
-    id 'com.gradleup.nmcp' version '1.2.0'
+    id 'com.gradleup.nmcp' version '1.2.1'
 }
-def pipelineBomVersion = findProperty('pipelineBomVersion') ?: '0.2.1-SNAPSHOT'
+
+scmVersion {
+    tag {
+        prefix = 'v'
+    }
+    checks {
+        uncommittedChanges = false
+        aheadOfRemote = false
+        snapshotDependencies = false
+    }
+}
+
+def pipelineBomVersion = findProperty('pipelineBomVersion') ?: '0.2.2'
 def pipestreamDataVersion = findProperty('pipestreamDataVersion') ?: '0.2.1'
 
 dependencies {
@@ -55,7 +71,7 @@ dependencies {
     testImplementation libs.commons.compress
     testImplementation("io.quarkus:quarkus-junit5-mockito")
     // Apache Tika dependencies - use standard package which includes most parsersimplementation libs.tika.core
-    implementation "ai.pipestream:tika4-shaded:0.1.5"
+    implementation "ai.pipestream:tika4-shaded:0.1.7"
 //    implementation libs.tika.parsers.standard
 //    // Extended parsers for better content extraction
 //    implementation libs.tika.parser.scientific
@@ -71,11 +87,13 @@ dependencies {
 }
 
 group = 'ai.pipestream.module'
-version = "${pipelineBomVersion}"
+version = "${scmVersion.version}"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
+    withJavadocJar()
+    withSourcesJar()
 }
 
 test {
@@ -128,6 +146,36 @@ compileTestJava {
     options.encoding = 'UTF-8'
 }
 
+// Configure Javadoc task
+tasks.withType(Javadoc).configureEach { task ->
+    def opts = task.options
+    opts.encoding = 'UTF-8'
+    opts.charSet = 'UTF-8'
+    opts.locale = 'en'
+    // Suppress missing Javadoc warnings for now
+    opts.addStringOption('Xdoclint:-missing', '-quiet')
+    // Exclude internal packages
+    task.exclude('**/internal/**', '**/impl/**', '**/test/**')
+}
+
+// Enable resource filtering to replace @version@ in application.properties
+// Use @ delimiters to avoid conflicts with ${} runtime property placeholders
+processResources {
+    filesMatching('**/*.properties') {
+        filter(ReplaceTokens, tokens: [
+            version: project.version.toString()
+        ])
+    }
+}
+
+processTestResources {
+    filesMatching('**/*.properties') {
+        filter(ReplaceTokens, tokens: [
+            version: project.version.toString()
+        ])
+    }
+}
+
 quarkusDev {
     jvmArgs = ["-Xmx10g", "-XX:MaxMetaspaceSize=1g", "--add-opens", "java.base/java.lang=ALL-UNNAMED"]
 }
@@ -135,30 +183,30 @@ quarkusDev {
 // Publishing configuration
 publishing {
     publications {
-        //noinspection GroovyAssignabilityCheck
-        maven(MavenPublication) { publication ->
+        // Use a named publication to match signing configuration below
+        create('maven', MavenPublication) { publication ->
             from components.java
-            //noinspection GroovyAssignabilityCheck
+            // Include Quarkus runner JAR for container deployments
             artifact(file("${buildDir}/quarkus-app/quarkus-run.jar")) { artifact ->
                 artifact.classifier = 'runner'
                 artifact.builtBy tasks.named('quarkusBuild')
             }
             pom { pom ->
                 name.set('Parser Module')
-                description.set('Tika Parkser Module for the pipeline system')
+                description.set('Tika Parser Module for the pipeline system')
                 url.set('https://github.com/ai-pipestream/module-parser')
 
                 licenses {
                     license {
                         name.set('MIT License')
-                        url.set('https://opensource.org/licenses/MIT')
+                        url.set('https://opensource.org/license/mit')
                     }
                 }
 
                 developers {
                     developer {
                         id.set('krickert')
-                        name.set('Pipestream Platform Team')
+                        name.set('Pipestream Engine Team')
                     }
                 }
 
@@ -166,6 +214,46 @@ publishing {
                     connection.set('scm:git:git://github.com/ai-pipestream/module-parser.git')
                     developerConnection.set('scm:git:ssh://github.com/ai-pipestream/module-parser.git')
                     url.set('https://github.com/ai-pipestream/module-parser')
+                }
+
+                // Ensure BOM/platform dependency is included in dependencyManagement
+                // This ensures Maven Central can resolve dependency versions from the BOM
+                withXml {
+                    def projectNode = asNode()
+                    def dependencyManagementNodes = projectNode.get('dependencyManagement')
+                    def dmNode
+                    def depsNode
+                    
+                    if (dependencyManagementNodes.isEmpty()) {
+                        // Create dependencyManagement and dependencies nodes
+                        dmNode = projectNode.appendNode('dependencyManagement')
+                        depsNode = dmNode.appendNode('dependencies')
+                    } else {
+                        // Get the first dependencyManagement node
+                        dmNode = dependencyManagementNodes[0]
+                        // Check if it has a dependencies child
+                        def dependenciesNodes = dmNode.get('dependencies')
+                        if (dependenciesNodes.isEmpty()) {
+                            depsNode = dmNode.appendNode('dependencies')
+                        } else {
+                            depsNode = dependenciesNodes[0]
+                        }
+                    }
+                    
+                    // Check if pipeline-bom already exists
+                    def existingBom = depsNode.children().find { dep ->
+                        dep.groupId?.text() == 'ai.pipestream' && 
+                        dep.artifactId?.text() == 'pipeline-bom'
+                    }
+                    
+                    if (!existingBom) {
+                        def bomDependency = depsNode.appendNode('dependency')
+                        bomDependency.appendNode('groupId', 'ai.pipestream')
+                        bomDependency.appendNode('artifactId', 'pipeline-bom')
+                        bomDependency.appendNode('version', pipelineBomVersion)
+                        bomDependency.appendNode('type', 'pom')
+                        bomDependency.appendNode('scope', 'import')
+                    }
                 }
             }
         }
@@ -175,28 +263,28 @@ publishing {
         // Publish to Maven Local for development
         mavenLocal()
 
-        // Publish to GitHub Packages when credentials are available (e.g. CI)
-        def githubToken = providers.environmentVariable("GITHUB_TOKEN")
-        if (githubToken.isPresent()) {
+        // Conditionally add GitHub Packages repository when credentials are available
+        def ghRepo = System.getenv('GITHUB_REPOSITORY') ?: 'ai-pipestream/module-parser'
+        def ghActor = System.getenv('GITHUB_ACTOR') ?: (project.findProperty('gpr.user') ?: System.getenv('GPR_USER'))
+        def ghToken = System.getenv('GITHUB_TOKEN') ?: (project.findProperty('gpr.key') ?: System.getenv('GPR_TOKEN'))
+        if (ghActor && ghToken) {
             maven {
-                name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/ai-pipestream/module-parser")
+                name = 'GitHubPackages'
+                url = uri("https://maven.pkg.github.com/${ghRepo}")
                 credentials {
-                    username = providers.environmentVariable("GITHUB_ACTOR").getOrElse("github-actions")
-                    password = githubToken.get()
-                }
-                mavenContent {
-                    releasesOnly()
+                    username = ghActor
+                    password = ghToken
                 }
             }
         }
     }
 }
 
-// Signing configuration for Maven Central
+// GPG Signing (uses org-level secrets)
 signing {
-    def signingKey = System.getenv("GPG_SIGNING_KEY")
-    def signingPassword = System.getenv("GPG_SIGNING_PASSPHRASE")
+    // Read org-level GPG secrets directly, so runnable apps don't need extra env mapping
+    def signingKey = System.getenv("GPG_PRIVATE_KEY")
+    def signingPassword = System.getenv("GPG_PASSPHRASE")
 
     if (signingKey && signingPassword) {
         useInMemoryPgpKeys(signingKey, signingPassword)
@@ -204,7 +292,15 @@ signing {
     }
 }
 
-// Maven Central publishing via nmcp plugin
+// Ensure all signing tasks run before nmcp bundles and publishes artifacts
+afterEvaluate {
+    tasks.matching { it.name.startsWith("nmcpZipAllPublications") || it.name.startsWith("nmcpPublishAllPublicationsToCentralPortal") }
+        .configureEach { nmcpTask ->
+            nmcpTask.dependsOn(tasks.withType(Sign))
+        }
+}
+
+// Maven Central publishing via NMCP
 nmcp {
     publishAllPublicationsToCentralPortal {
         username = providers.environmentVariable("MAVEN_CENTRAL_USERNAME")

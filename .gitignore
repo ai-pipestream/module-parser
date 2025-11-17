@@ -289,3 +289,4 @@ build
 .idea/
 *.iml
 .claude
+bin

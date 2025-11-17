@@ -21,10 +21,10 @@ public final class CreativeCommonsMetadataBuilder {
         Set<String> mapped = new HashSet<>();
 
         org.jboss.logging.Logger LOG = org.jboss.logging.Logger.getLogger(CreativeCommonsMetadataBuilder.class);
-        LOG.debugf("Building CreativeCommonsMetadata, checking for XMPRights fields...");
-        LOG.debugf("  WebStatement in metadata: %s", metadata.get(XMPRights.WEB_STATEMENT));
-        LOG.debugf("  UsageTerms in metadata: %s", metadata.get(XMPRights.USAGE_TERMS));
-        LOG.debugf("  Marked in metadata: %s", metadata.get(XMPRights.MARKED));
+//        LOG.debugf("Building CreativeCommonsMetadata, checking for XMPRights fields...");
+//        LOG.debugf("  WebStatement in metadata: %s", metadata.get(XMPRights.WEB_STATEMENT));
+//        LOG.debugf("  UsageTerms in metadata: %s", metadata.get(XMPRights.USAGE_TERMS));
+//        LOG.debugf("  Marked in metadata: %s", metadata.get(XMPRights.MARKED));
 
         // XMPRights
         MetadataUtils.mapStringField(metadata, XMPRights.CERTIFICATE, builder::setRightsCertificate, mapped);

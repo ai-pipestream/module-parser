@@ -256,8 +256,6 @@ public class DocumentTypeDetector {
     private static boolean hasCreativeCommonsMetadata(Metadata metadata) {
         String[] allFields = metadata.names();
 
-        LOG.debugf("Checking for Creative Commons metadata among %d fields", allFields.length);
-
         for (String field : allFields) {
             String lowerField = field.toLowerCase();
             if (lowerField.contains("license") ||

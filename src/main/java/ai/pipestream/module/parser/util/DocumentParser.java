@@ -90,9 +90,6 @@ public class DocumentParser {
     public PipeDoc parseDocument(ByteString content, ParserConfig config, String filename)
             throws IOException, SAXException, TikaException {
         
-        LOG.debugf("Parsing document with filename: %s, content size: %d bytes, config ID: %s", 
-                  filename, content.size(), config.configId());
-        
         // Convert ParserConfig to Map for compatibility with existing methods
         Map<String, String> configMap = convertConfigToMap(config);
         

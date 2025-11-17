@@ -6,11 +6,11 @@ import ai.pipestream.parsed.data.image.v1.ExifMetadata;
 import ai.pipestream.parsed.data.image.v1.GpsMetadata;
 import ai.pipestream.parsed.data.image.v1.IptcMetadata;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.TIFF;
-import org.apache.tika.metadata.IPTC;
-import org.apache.tika.metadata.Photoshop;
-import org.apache.tika.metadata.TikaCoreProperties;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.TIFF;
+import ai.pipestream.shaded.tika.metadata.IPTC;
+import ai.pipestream.shaded.tika.metadata.Photoshop;
+import ai.pipestream.shaded.tika.metadata.TikaCoreProperties;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -63,11 +63,11 @@ public class ImageMetadataBuilder {
 
     private static void mapExif(Metadata md, ImageMetadata.Builder b, Set<String> mapped) {
         ExifMetadata.Builder ex = ExifMetadata.newBuilder();
-        MetadataUtils.mapDoubleField(md, org.apache.tika.metadata.Metadata.EXPOSURE_TIME, ex::setExposureTime, mapped);
-        MetadataUtils.mapDoubleField(md, org.apache.tika.metadata.Metadata.F_NUMBER, ex::setFNumber, mapped);
-        MetadataUtils.mapDoubleField(md, org.apache.tika.metadata.Metadata.FOCAL_LENGTH, ex::setFocalLength, mapped);
+        MetadataUtils.mapDoubleField(md, ai.pipestream.shaded.tika.metadata.Metadata.EXPOSURE_TIME, ex::setExposureTime, mapped);
+        MetadataUtils.mapDoubleField(md, ai.pipestream.shaded.tika.metadata.Metadata.F_NUMBER, ex::setFNumber, mapped);
+        MetadataUtils.mapDoubleField(md, ai.pipestream.shaded.tika.metadata.Metadata.FOCAL_LENGTH, ex::setFocalLength, mapped);
         MetadataUtils.mapRepeatedIntField(md, TIFF.ISO_SPEED_RATINGS, ex::addAllIsoSpeedRatings, mapped);
-        MetadataUtils.mapStringField(md, org.apache.tika.metadata.Metadata.FLASH_FIRED, v -> ex.setFlashFired(Boolean.parseBoolean(v)), mapped);
+        MetadataUtils.mapStringField(md, ai.pipestream.shaded.tika.metadata.Metadata.FLASH_FIRED, v -> ex.setFlashFired(Boolean.parseBoolean(v)), mapped);
         // Many EXIF fields are strings (WhiteBalance, etc.)
         // Here we set only the key ones; additional go to additional_metadata
         b.setExif(ex.build());
@@ -78,7 +78,7 @@ public class ImageMetadataBuilder {
         MetadataUtils.mapDoubleField(md, TikaCoreProperties.LATITUDE, g::setLatitude, mapped);
         MetadataUtils.mapDoubleField(md, TikaCoreProperties.LONGITUDE, g::setLongitude, mapped);
         // Timestamp may be stored in Geographic.TIMESTAMP
-        MetadataUtils.mapTimestampField(md, org.apache.tika.metadata.Geographic.TIMESTAMP, g::setTimestamp, mapped);
+        MetadataUtils.mapTimestampField(md, ai.pipestream.shaded.tika.metadata.Geographic.TIMESTAMP, g::setTimestamp, mapped);
         b.setGps(g.build());
     }
 

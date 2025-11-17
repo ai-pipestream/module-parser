@@ -16,8 +16,8 @@ import ai.pipestream.module.parser.tika.builders.FontMetadataBuilder;
 import ai.pipestream.parsed.data.dublin.v1.DublinCoreMetadata;
 import ai.pipestream.parsed.data.tika.v1.TikaResponse;
 import ai.pipestream.parsed.data.tika.v1.TikaContent;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.DublinCore;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.DublinCore;
 import org.jboss.logging.Logger;
 
 /**
@@ -170,7 +170,7 @@ public class TikaMetadataExtractor {
         return response;
     }
 
-    private static boolean hasXmpRights(org.apache.tika.metadata.Metadata md) {
+    private static boolean hasXmpRights(ai.pipestream.shaded.tika.metadata.Metadata md) {
         String[] names = md.names();
         for (String n : names) {
             String ln = n.toLowerCase();

@@ -3,21 +3,32 @@ package ai.pipestream.module.parser.util;
 import ai.pipestream.data.v1.DocOutline;
 import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.data.v1.SearchMetadata;
+import ai.pipestream.shaded.tika.Tika;
+import ai.pipestream.shaded.tika.config.TikaConfig;
+import ai.pipestream.shaded.tika.exception.TikaException;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.XMPRights;
+import ai.pipestream.shaded.tika.mime.MediaType;
+import ai.pipestream.shaded.tika.parser.AutoDetectParser;
+import ai.pipestream.shaded.tika.parser.ParseContext;
+import ai.pipestream.shaded.tika.parser.Parser;
+import ai.pipestream.shaded.tika.sax.BodyContentHandler;
+import ai.pipestream.shaded.tika.sax.WriteOutContentHandler;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Struct;
 import com.google.protobuf.Value;
 import ai.pipestream.module.parser.config.ParserConfig;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import org.apache.tika.Tika;
-import org.apache.tika.config.TikaConfig;
-import org.apache.tika.exception.TikaException;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.parser.AutoDetectParser;
-import org.apache.tika.parser.ParseContext;
-import org.apache.tika.parser.Parser;
-import org.apache.tika.sax.BodyContentHandler;
-import org.apache.tika.sax.WriteOutContentHandler;
+//import ai.pipestream.shaded.tika.Tika;
+//import ai.pipestream.shaded.tika.config.TikaConfig;
+//import ai.pipestream.shaded.tika.exception.TikaException;
+//import ai.pipestream.shaded.tika.metadata.Metadata;
+//import ai.pipestream.shaded.tika.parser.AutoDetectParser;
+//import ai.pipestream.shaded.tika.parser.ParseContext;
+//import ai.pipestream.shaded.tika.parser.Parser;
+//import ai.pipestream.shaded.tika.sax.BodyContentHandler;
+//import ai.pipestream.shaded.tika.sax.WriteOutContentHandler;
 import org.jboss.logging.Logger;
 import org.xml.sax.SAXException;
 
@@ -43,8 +54,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
-import org.apache.tika.mime.MediaType;
-import org.apache.tika.metadata.XMPRights;
+//import ai.pipestream.shaded.tika.mime.MediaType;
+//import ai.pipestream.shaded.tika.metadata.XMPRights;
 
 /**
  * CDI bean for parsing documents using Apache Tika.
@@ -179,7 +190,7 @@ public class DocumentParser {
                 LOG.warnf(ae, "Archive detection failed; retrying without zip container detector");
                 String noZipDetectorCfg = "<properties>\n" +
                         "  <detectors>\n" +
-                        "    <detector class=\"org.apache.tika.detect.DefaultDetector\"/>\n" +
+                        "    <detector class=\"ai.pipestream.shaded.tika.detect.DefaultDetector\"/>\n" +
                         "  </detectors>\n" +
                         "</properties>";
                 try (InputStream cfg = new ByteArrayInputStream(noZipDetectorCfg.getBytes());
@@ -195,7 +206,7 @@ public class DocumentParser {
 
         // Post-process: Extract XMP Rights metadata if this is an image with XMP
         try {
-            String mimeType = metadata.get(org.apache.tika.metadata.Metadata.CONTENT_TYPE);
+            String mimeType = metadata.get(ai.pipestream.shaded.tika.metadata.Metadata.CONTENT_TYPE);
             if (mimeType != null && mimeType.startsWith("image/")) {
                 extractXMPRights(content, metadata);
             }
@@ -284,7 +295,7 @@ public class DocumentParser {
         if (disableArchiveDetection || isFont) {
             LOG.infof("Routing fonts to TrueTypeParser to bypass container detection: %s", filename);
             try {
-                return new org.apache.tika.parser.font.TrueTypeParser();
+                return new ai.pipestream.shaded.tika.parser.font.TrueTypeParser();
             } catch (Throwable t) {
                 LOG.warnf(t, "Falling back to default parser for font due to missing font parser classes");
                 return new AutoDetectParser();
@@ -454,7 +465,7 @@ public class DocumentParser {
 
         // Disable EMF Parser
         Element emfParser = doc.createElement("parser");
-        emfParser.setAttribute("class", "org.apache.tika.parser.microsoft.EMFParser");
+        emfParser.setAttribute("class", "ai.pipestream.shaded.tika.parser.microsoft.EMFParser");
         emfParser.setAttribute("enabled", "false");
         parsers.appendChild(emfParser);
 
@@ -480,7 +491,7 @@ public class DocumentParser {
 
         // Add GeoTopicParser
         Element geoTopicParser = doc.createElement("parser");
-        geoTopicParser.setAttribute("class", "org.apache.tika.parser.geo.topic.GeoTopicParser");
+        geoTopicParser.setAttribute("class", "ai.pipestream.shaded.tika.parser.geo.topic.GeoTopicParser");
         geoTopicParser.setAttribute("enabled", "true");
         parsers.appendChild(geoTopicParser);
 
@@ -824,8 +835,8 @@ public class DocumentParser {
      */
     private byte[] extractXMPPacket(InputStream imageStream) throws IOException {
         // Use Tika's XMP packet scanner
-        org.apache.tika.parser.xmp.XMPPacketScanner scanner =
-            new org.apache.tika.parser.xmp.XMPPacketScanner();
+        ai.pipestream.shaded.tika.parser.xmp.XMPPacketScanner scanner =
+            new ai.pipestream.shaded.tika.parser.xmp.XMPPacketScanner();
 
         try (java.io.ByteArrayOutputStream xmpOut = new java.io.ByteArrayOutputStream()) {
             boolean found = scanner.parse(imageStream, xmpOut);

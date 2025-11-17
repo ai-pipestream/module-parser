@@ -28,10 +28,10 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.parser.AutoDetectParser;
-import org.apache.tika.parser.ParseContext;
-import org.apache.tika.parser.Parser;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.parser.AutoDetectParser;
+import ai.pipestream.shaded.tika.parser.ParseContext;
+import ai.pipestream.shaded.tika.parser.Parser;
 
 import static ai.pipestream.data.v1.Blob.ContentCase.CONTENT_NOT_SET;
 import static ai.pipestream.data.v1.Blob.ContentCase.STORAGE_REF;
@@ -516,11 +516,11 @@ public class ParserServiceImpl implements PipeStepProcessor {
             try {
                 String customConfig = "<properties>\n" +
                         "  <parsers>\n" +
-                        "    <parser class=\"org.apache.tika.parser.microsoft.EMFParser\" enabled=\"false\"/>\n" +
+                        "    <parser class=\"ai.pipestream.shaded.tika.parser.microsoft.EMFParser\" enabled=\"false\"/>\n" +
                         "  </parsers>\n" +
                         "</properties>";
                 try (InputStream cfg = new ByteArrayInputStream(customConfig.getBytes())) {
-                    org.apache.tika.config.TikaConfig tikaCfg = new org.apache.tika.config.TikaConfig(cfg);
+                    ai.pipestream.shaded.tika.config.TikaConfig tikaCfg = new ai.pipestream.shaded.tika.config.TikaConfig(cfg);
                     Parser fallbackParser = new AutoDetectParser(tikaCfg);
                     ParseContext fallbackCtx = new ParseContext();
                     fallbackCtx.set(Parser.class, fallbackParser);

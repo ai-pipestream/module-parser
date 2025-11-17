@@ -3,9 +3,9 @@ package ai.pipestream.module.parser.tika.builders;
 import com.google.protobuf.Struct;
 import ai.pipestream.parsed.data.epub.v1.EpubMetadata;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.Epub;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.TikaCoreProperties;
+import ai.pipestream.shaded.tika.metadata.Epub;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.TikaCoreProperties;
 
 import java.util.HashSet;
 import java.util.Set;

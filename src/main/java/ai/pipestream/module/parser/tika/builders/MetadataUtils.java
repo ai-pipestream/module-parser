@@ -4,8 +4,8 @@ import com.google.protobuf.Struct;
 import com.google.protobuf.Value;
 import com.google.protobuf.Timestamp;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.Property;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.Property;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
@@ -458,7 +458,7 @@ public class MetadataUtils {
     public static String getTikaVersion() {
         try {
             // Try to get Tika version from package info
-            Package tikaPackage = org.apache.tika.Tika.class.getPackage();
+            Package tikaPackage = ai.pipestream.shaded.tika.Tika.class.getPackage();
             if (tikaPackage != null && tikaPackage.getImplementationVersion() != null) {
                 return tikaPackage.getImplementationVersion();
             }

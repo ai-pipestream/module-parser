@@ -1,7 +1,7 @@
 package ai.pipestream.module.parser.util;
 
+import ai.pipestream.shaded.tika.metadata.Metadata;
 import jakarta.inject.Singleton;
-import org.apache.tika.metadata.Metadata;
 import org.jboss.logging.Logger;
 
 import java.util.HashMap;

@@ -3,10 +3,10 @@ package ai.pipestream.module.parser.tika.builders;
 import com.google.protobuf.Struct;
 import ai.pipestream.parsed.data.email.v1.EmailMetadata;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.MAPI;
-import org.apache.tika.metadata.Message;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.TikaCoreProperties;
+import ai.pipestream.shaded.tika.metadata.MAPI;
+import ai.pipestream.shaded.tika.metadata.Message;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.TikaCoreProperties;
 
 import java.util.HashSet;
 import java.util.Set;

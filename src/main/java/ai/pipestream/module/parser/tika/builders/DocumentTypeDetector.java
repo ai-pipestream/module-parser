@@ -1,11 +1,11 @@
 package ai.pipestream.module.parser.tika.builders;
 
-import org.apache.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.Metadata;
 import org.jboss.logging.Logger;
 
 /**
  * Detects document type from Tika metadata to determine which metadata builder to use.
- * 
+ * <p>
  * Uses MIME type detection with fallbacks to route to the appropriate metadata builder:
  * - PDF → PdfMetadataBuilder
  * - Office → OfficeMetadataBuilder  

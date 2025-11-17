@@ -5,8 +5,8 @@ import com.google.protobuf.Timestamp;
 import ai.pipestream.parsed.data.warc.v1.WarcMetadata;
 import ai.pipestream.parsed.data.warc.v1.WarcHttpHeader;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.WARC;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.WARC;
 
 import java.time.Instant;
 import java.util.ArrayList;

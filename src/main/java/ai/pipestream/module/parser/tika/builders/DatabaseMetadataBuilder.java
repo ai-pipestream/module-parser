@@ -3,9 +3,9 @@ package ai.pipestream.module.parser.tika.builders;
 import com.google.protobuf.Struct;
 import ai.pipestream.parsed.data.database.v1.DatabaseMetadata;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.TikaCoreProperties;
-import org.apache.tika.metadata.Database; // Tika's Database metadata interface
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.TikaCoreProperties;
+import ai.pipestream.shaded.tika.metadata.Database; // Tika's Database metadata interface
 
 import java.util.HashSet;
 import java.util.Set;

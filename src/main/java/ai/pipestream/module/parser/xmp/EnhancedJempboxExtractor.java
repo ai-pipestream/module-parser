@@ -2,10 +2,10 @@ package ai.pipestream.module.parser.xmp;
 
 import org.apache.jempbox.xmp.XMPMetadata;
 import org.apache.jempbox.xmp.XMPSchema;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.Property;
-import org.apache.tika.metadata.XMPRights;
-import org.apache.tika.parser.xmp.JempboxExtractor;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.Property;
+import ai.pipestream.shaded.tika.metadata.XMPRights;
+import ai.pipestream.shaded.tika.parser.xmp.JempboxExtractor;
 import org.jboss.logging.Logger;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -37,13 +37,13 @@ public class EnhancedJempboxExtractor extends JempboxExtractor {
      * This overrides the parent to add Rights extraction.
      */
     @Override
-    public void parse(InputStream is) throws IOException, org.apache.tika.exception.TikaException {
+    public void parse(InputStream is) throws IOException, ai.pipestream.shaded.tika.exception.TikaException {
         // The parent JempboxExtractor will scan for XMP packets and parse them
         super.parse(is);
 
         // Now we need to re-scan and re-parse to get the XMPMetadata object for Rights extraction
         // The XMPPacketScanner is used internally by JempboxExtractor
-        try (org.apache.tika.io.TikaInputStream tis = org.apache.tika.io.TikaInputStream.cast(is)) {
+        try (ai.pipestream.shaded.tika.io.TikaInputStream tis = ai.pipestream.shaded.tika.io.TikaInputStream.cast(is)) {
             if (tis != null && tis.hasFile()) {
                 // Re-scan for XMP packet
                 try (java.io.FileInputStream fis = new java.io.FileInputStream(tis.getFile())) {

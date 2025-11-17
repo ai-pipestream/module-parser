@@ -3,9 +3,9 @@ package ai.pipestream.module.parser.tika.builders;
 import com.google.protobuf.Struct;
 import ai.pipestream.parsed.data.media.v1.MediaMetadata;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.TikaCoreProperties;
-import org.apache.tika.metadata.XMPDM;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.TikaCoreProperties;
+import ai.pipestream.shaded.tika.metadata.XMPDM;
 
 import java.util.HashSet;
 import java.util.Set;

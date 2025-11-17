@@ -3,10 +3,10 @@ package ai.pipestream.module.parser.tika.builders;
 import com.google.protobuf.Struct;
 import ai.pipestream.parsed.data.office.v1.OfficeMetadata;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.Office;
-import org.apache.tika.metadata.OfficeOpenXMLCore;
-import org.apache.tika.metadata.OfficeOpenXMLExtended;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.Office;
+import ai.pipestream.shaded.tika.metadata.OfficeOpenXMLCore;
+import ai.pipestream.shaded.tika.metadata.OfficeOpenXMLExtended;
 import org.jboss.logging.Logger;
 
 import java.util.HashSet;

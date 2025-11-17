@@ -3,12 +3,12 @@ package ai.pipestream.module.parser.tika.builders;
 import com.google.protobuf.Struct;
 import ai.pipestream.parsed.data.rtf.v1.RtfMetadata;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.Office;
-import org.apache.tika.metadata.OfficeOpenXMLCore;
-import org.apache.tika.metadata.OfficeOpenXMLExtended;
-import org.apache.tika.metadata.RTFMetadata;
-import org.apache.tika.metadata.TikaCoreProperties;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.Office;
+import ai.pipestream.shaded.tika.metadata.OfficeOpenXMLCore;
+import ai.pipestream.shaded.tika.metadata.OfficeOpenXMLExtended;
+import ai.pipestream.shaded.tika.metadata.RTFMetadata;
+import ai.pipestream.shaded.tika.metadata.TikaCoreProperties;
 
 import java.util.HashSet;
 import java.util.Set;

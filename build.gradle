@@ -54,13 +54,13 @@ dependencies {
     // Apache Commons Compress for reading from JARs/ZIPs
     testImplementation libs.commons.compress
     testImplementation("io.quarkus:quarkus-junit5-mockito")
-    // Apache Tika dependencies - use standard package which includes most parsers
-    implementation libs.tika.core
-    implementation libs.tika.parsers.standard
-    // Extended parsers for better content extraction
-    implementation libs.tika.parser.scientific
-    // OCR support for images and scanned documents (requires tesseract)
-    implementation libs.tika.parser.ocr
+    // Apache Tika dependencies - use standard package which includes most parsersimplementation libs.tika.core
+    implementation "ai.pipestream:tika4-shaded:0.1.5"
+//    implementation libs.tika.parsers.standard
+//    // Extended parsers for better content extraction
+//    implementation libs.tika.parser.scientific
+//    // OCR support for images and scanned documents (requires tesseract)
+//    implementation libs.tika.parser.ocr
     // Markdown parsing (commonmark)
     implementation libs.commonmark
     // PDF outline extraction (pdfbox)

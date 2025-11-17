@@ -3,7 +3,7 @@ package ai.pipestream.module.parser.tika.builders;
 import com.google.protobuf.Struct;
 import ai.pipestream.parsed.data.climate.v1.ClimateForcastMetadata;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.Metadata;
 
 import java.util.HashSet;
 import java.util.Set;

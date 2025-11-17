@@ -4,12 +4,12 @@ import com.google.protobuf.Struct;
 import com.google.protobuf.Timestamp;
 import ai.pipestream.parsed.data.pdf.v1.PdfMetadata;
 import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.PDF;
-import org.apache.tika.metadata.XMPPDF;
-import org.apache.tika.metadata.AccessPermissions;
-import org.apache.tika.metadata.PagedText;
-import org.apache.tika.metadata.TikaCoreProperties;
+import ai.pipestream.shaded.tika.metadata.Metadata;
+import ai.pipestream.shaded.tika.metadata.PDF;
+import ai.pipestream.shaded.tika.metadata.XMPPDF;
+import ai.pipestream.shaded.tika.metadata.AccessPermissions;
+import ai.pipestream.shaded.tika.metadata.PagedText;
+import ai.pipestream.shaded.tika.metadata.TikaCoreProperties;
 import org.jboss.logging.Logger;
 
 import java.util.HashSet;
@@ -17,12 +17,12 @@ import java.util.Set;
 
 /**
  * Builds PdfMetadata protobuf from Tika Metadata using exact source-destination mappings.
- * 
+ * <p>
  * Maps fields from:
- * - org.apache.tika.metadata.PDF (50+ properties)
- * - org.apache.tika.metadata.XMPPDF (XMP PDF properties)
- * - org.apache.tika.metadata.AccessPermissions (security properties)
- * 
+ * - ai.pipestream.shaded.tika.metadata.PDF (50+ properties)
+ * - ai.pipestream.shaded.tika.metadata.XMPPDF (XMP PDF properties)
+ * - ai.pipestream.shaded.tika.metadata.AccessPermissions (security properties)
+ * <p>
  * See SOURCE_DESTINATION_MAPPING.md for exact field mappings.
  */
 public class PdfMetadataBuilder {
@@ -207,7 +207,7 @@ public class PdfMetadataBuilder {
     }
 
     private static void mapRepeatedTimestampFieldWithRaw(Metadata metadata,
-                                                  org.apache.tika.metadata.Property property,
+                                                  ai.pipestream.shaded.tika.metadata.Property property,
                                                   PdfMetadata.Builder builder,
                                                   Set<String> mappedFields) {
         String key = property.getName();

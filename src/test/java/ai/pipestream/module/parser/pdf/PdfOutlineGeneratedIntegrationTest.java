@@ -1,7 +1,11 @@
 package ai.pipestream.module.parser.pdf;
 
 import com.google.protobuf.ByteString;
-import ai.pipestream.data.module.*;
+import ai.pipestream.data.module.v1.ProcessDataRequest;
+import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.v1.ProcessConfiguration;
+import ai.pipestream.data.module.v1.ServiceMetadata;
+import ai.pipestream.data.module.v1.PipeStepProcessorService;
 import ai.pipestream.data.v1.Blob;
 import ai.pipestream.data.v1.BlobBag;
 import ai.pipestream.data.v1.PipeDoc;
@@ -28,7 +32,7 @@ import static org.hamcrest.Matchers.*;
 public class PdfOutlineGeneratedIntegrationTest {
 
     @GrpcClient
-    PipeStepProcessor parserService;
+    PipeStepProcessorService parserService;
 
     @Test
     public void testPdfBookmarksPopulateDocOutline() throws Exception {
@@ -58,13 +62,13 @@ public class PdfOutlineGeneratedIntegrationTest {
                 .setStreamId(UUID.randomUUID().toString())
                 .setCurrentHopNumber(1)
                 .build();
-        ModuleProcessRequest req = ModuleProcessRequest.newBuilder()
+        ProcessDataRequest req = ProcessDataRequest.newBuilder()
                 .setDocument(doc)
                 .setConfig(config)
                 .setMetadata(meta)
                 .build();
 
-        ModuleProcessResponse resp = parserService.processData(req).await().atMost(Duration.ofSeconds(20));
+        ProcessDataResponse resp = parserService.processData(req).await().atMost(Duration.ofSeconds(20));
         assertThat(resp.getSuccess(), is(true));
         assertThat(resp.hasOutputDoc(), is(true));
         PipeDoc out = resp.getOutputDoc();

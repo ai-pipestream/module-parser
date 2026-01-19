@@ -43,7 +43,7 @@ public class EnhancedJempboxExtractor extends JempboxExtractor {
 
         // Now we need to re-scan and re-parse to get the XMPMetadata object for Rights extraction
         // The XMPPacketScanner is used internally by JempboxExtractor
-        try (ai.pipestream.shaded.tika.io.TikaInputStream tis = ai.pipestream.shaded.tika.io.TikaInputStream.cast(is)) {
+        try (ai.pipestream.shaded.tika.io.TikaInputStream tis = ai.pipestream.shaded.tika.io.TikaInputStream.get(is)) {
             if (tis != null && tis.hasFile()) {
                 // Re-scan for XMP packet
                 try (java.io.FileInputStream fis = new java.io.FileInputStream(tis.getFile())) {

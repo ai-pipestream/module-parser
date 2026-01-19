@@ -2,11 +2,11 @@ package ai.pipestream.module.parser.pdf;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Any;
-import ai.pipestream.data.module.ModuleProcessRequest;
-import ai.pipestream.data.module.ModuleProcessResponse;
-import ai.pipestream.data.module.PipeStepProcessor;
-import ai.pipestream.data.module.ProcessConfiguration;
-import ai.pipestream.data.module.ServiceMetadata;
+import ai.pipestream.data.module.v1.ProcessDataRequest;
+import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.PipeStepProcessorService;
+import ai.pipestream.data.v1.ProcessConfiguration;
+import ai.pipestream.data.module.v1.ServiceMetadata;
 import ai.pipestream.data.v1.Blob;
 import ai.pipestream.data.v1.BlobBag;
 import ai.pipestream.data.v1.PipeDoc;
@@ -31,7 +31,7 @@ public class PdfLocalFolderGrpcTest {
     private static final Logger LOG = Logger.getLogger(PdfLocalFolderGrpcTest.class);
 
     @GrpcClient
-    PipeStepProcessor parserService;
+    PipeStepProcessorService parserService;
 
     @Test
     public void testLocalHomePdfFolderIfPresent() throws Exception {
@@ -51,7 +51,7 @@ public class PdfLocalFolderGrpcTest {
         try (Stream<Path> walk = Files.walk(homePdf)) {
             for (Path p : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(f -> f.toString().toLowerCase().endsWith(".pdf")).limit(5)::iterator) {
                 processed++;
-                ModuleProcessResponse resp = processPath(p, config)
+                ProcessDataResponse resp = processPath(p, config)
                         .await().atMost(Duration.ofSeconds(20));
                 assertThat("gRPC call should return a response", resp, notNullValue());
                 if (resp.getSuccess() && resp.hasOutputDoc()) {
@@ -78,7 +78,7 @@ public class PdfLocalFolderGrpcTest {
         assertThat("Reasonable success rate on local PDFs", successRate, greaterThan(0.6));
     }
 
-    private Uni<ModuleProcessResponse> processPath(Path pdfPath, ProcessConfiguration config) throws Exception {
+    private Uni<ProcessDataResponse> processPath(Path pdfPath, ProcessConfiguration config) throws Exception {
         byte[] content = Files.readAllBytes(pdfPath);
         Blob blob = Blob.newBuilder()
                 .setBlobId(UUID.randomUUID().toString() + "-blob")
@@ -101,7 +101,7 @@ public class PdfLocalFolderGrpcTest {
                 .setCurrentHopNumber(1)
                 .build();
 
-        ModuleProcessRequest request = ModuleProcessRequest.newBuilder()
+        ProcessDataRequest request = ProcessDataRequest.newBuilder()
                 .setDocument(doc)
                 .setConfig(config)
                 .setMetadata(metadata)

@@ -1,11 +1,11 @@
 package ai.pipestream.module.parser;
 
-import ai.pipestream.common.service.SchemaExtractorService;
-import ai.pipestream.common.util.ProcessingBuffer;
-import ai.pipestream.data.module.*;
+import ai.pipestream.module.parser.schema.SchemaExtractorService;
+import ai.pipestream.data.module.v1.*;
 import ai.pipestream.data.v1.Blob;
 import ai.pipestream.data.v1.DocOutline;
 import ai.pipestream.data.v1.PipeDoc;
+import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.v1.SearchMetadata;
 import ai.pipestream.parsed.data.tika.v1.TikaResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,7 +19,6 @@ import ai.pipestream.module.parser.schema.SchemaEnhancer;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import org.jboss.logging.Logger;
 
@@ -38,14 +37,10 @@ import static ai.pipestream.data.v1.Blob.ContentCase.STORAGE_REF;
 
 @GrpcService // Marks this as a gRPC service that Quarkus will expose
 @Singleton // Ensures only one instance is created
-public class ParserServiceImpl implements PipeStepProcessor {
+public class ParserServiceImpl implements PipeStepProcessorService {
 
     private static final Logger LOG = Logger.getLogger(ParserServiceImpl.class);
 
-    @Inject
-    @Named("parserOutputBuffer")
-    ProcessingBuffer<PipeDoc> outputBuffer;
-    
     @Inject
     ObjectMapper objectMapper;
 
@@ -59,13 +54,13 @@ public class ParserServiceImpl implements PipeStepProcessor {
     DocumentParser documentParser;
 
     @Override
-    public Uni<ModuleProcessResponse> processData(ModuleProcessRequest request) {
-        LOG.debugf("Parser service received document: %s", 
+    public Uni<ProcessDataResponse> processData(ProcessDataRequest request) {
+        LOG.debugf("Parser service received document: %s",
                  request.hasDocument() ? request.getDocument().getDocId() : "no document");
 
         return Uni.createFrom().item(() -> {
             try {
-                ModuleProcessResponse.Builder responseBuilder = ModuleProcessResponse.newBuilder()
+                ProcessDataResponse.Builder responseBuilder = ProcessDataResponse.newBuilder()
                         .setSuccess(true);
 
                 if (request.hasDocument()) {
@@ -302,10 +297,6 @@ public class ParserServiceImpl implements PipeStepProcessor {
 
                             PipeDoc outputDoc = outputDocBuilder.build();
 
-                            // Add the document to the processing buffer for test data generation
-                            outputBuffer.add(outputDoc);
-                            LOG.debugf("Added document to processing buffer: %s", outputDoc.getDocId());
-
                             responseBuilder.setOutputDoc(outputDoc)
                                     .addProcessorLogs("Parser service successfully processed document using Tika")
                                     .addProcessorLogs(String.format("Extracted title: '%s'", 
@@ -342,7 +333,7 @@ public class ParserServiceImpl implements PipeStepProcessor {
             } catch (Exception e) {
                 LOG.error("Error parsing document: " + e.getMessage(), e);
 
-                return ModuleProcessResponse.newBuilder()
+                return ProcessDataResponse.newBuilder()
                         .setSuccess(false)
                         .addProcessorLogs("Parser service failed to process document: " + e.getMessage())
                         .addProcessorLogs("Error type: " + e.getClass().getSimpleName())
@@ -350,7 +341,7 @@ public class ParserServiceImpl implements PipeStepProcessor {
             } catch (AssertionError e) {
                 LOG.error("Assertion error parsing document: " + e.getMessage(), e);
 
-                return ModuleProcessResponse.newBuilder()
+                return ProcessDataResponse.newBuilder()
                         .setSuccess(false)
                         .addProcessorLogs("Parser service failed with assertion error: " + e.getMessage())
                         .addProcessorLogs("This may be a Tika internal issue with the document format")
@@ -358,7 +349,7 @@ public class ParserServiceImpl implements PipeStepProcessor {
             } catch (Throwable t) {
                 LOG.error("Unexpected error parsing document: " + t.getMessage(), t);
 
-                return ModuleProcessResponse.newBuilder()
+                return ProcessDataResponse.newBuilder()
                         .setSuccess(false)
                         .addProcessorLogs("Parser service failed with unexpected error: " + t.getMessage())
                         .addProcessorLogs("Error type: " + t.getClass().getSimpleName())
@@ -368,13 +359,13 @@ public class ParserServiceImpl implements PipeStepProcessor {
     }
 
     @Override
-    public Uni<ServiceRegistrationMetadata> getServiceRegistration(RegistrationRequest request) {
+    public Uni<GetServiceRegistrationResponse> getServiceRegistration(GetServiceRegistrationRequest request) {
         LOG.debug("Parser service registration requested");
 
-        ServiceRegistrationMetadata.Builder responseBuilder = ServiceRegistrationMetadata.newBuilder()
+        GetServiceRegistrationResponse.Builder responseBuilder = GetServiceRegistrationResponse.newBuilder()
                 .setModuleName("parser")
                 .setVersion("1.0.0-SNAPSHOT")
-                .setCapabilities(Capabilities.newBuilder().addTypes(CapabilityType.PARSER).build());
+                .setCapabilities(Capabilities.newBuilder().addTypes(CapabilityType.CAPABILITY_TYPE_PARSER).build());
 
         // Use SchemaExtractorService to get a JSONForms-ready ParserConfig schema (refs resolved)
         Optional<String> schemaOptional = schemaExtractorService.extractParserConfigSchemaResolvedForJsonForms();
@@ -426,36 +417,29 @@ public class ParserServiceImpl implements PipeStepProcessor {
         }
     }
     
-    @Override
-    public Uni<ModuleProcessResponse> testProcessData(ModuleProcessRequest request) {
-        LOG.debug("TestProcessData called - proxying to processData");
-        return processData(request);
-    }
-
-
     /**
      * Extracts configuration parameters from the process request.
      */
-    private ParserConfig extractConfiguration(ModuleProcessRequest request) {
-        // Try to extract from custom JSON config first
-        if (request.hasConfig() && request.getConfig().hasCustomJsonConfig()) {
+    private ParserConfig extractConfiguration(ProcessDataRequest request) {
+        // Try to extract from JSON config first
+        if (request.hasConfig() && request.getConfig().hasJsonConfig()) {
             try {
-                Struct jsonConfig = request.getConfig().getCustomJsonConfig();
+                Struct jsonConfig = request.getConfig().getJsonConfig();
                 String jsonString = structToJsonString(jsonConfig);
                 LOG.debugf("Parsing ParserConfig from JSON: %s", jsonString);
-                
+
                 return objectMapper.readValue(jsonString, ParserConfig.class);
             } catch (Exception e) {
                 LOG.warnf("Failed to parse ParserConfig from JSON, using fallback: %s", e.getMessage());
             }
         }
-        
+
         // Fallback to config params with defaults
         Map<String, String> configParams = new TreeMap<>();
         if (request.hasConfig()) {
             configParams.putAll(request.getConfig().getConfigParamsMap());
         }
-        
+
         LOG.debugf("Using default ParserConfig with config params: %s", configParams.keySet());
         return ParserConfig.defaultConfig();
     }
@@ -510,24 +494,30 @@ public class ParserServiceImpl implements PipeStepProcessor {
         parseContext.set(Parser.class, parser);
 
         try (InputStream is = new ByteArrayInputStream(content.toByteArray())) {
-            parser.parse(is, handler, metadata, parseContext);
+            parser.parse(ai.pipestream.shaded.tika.io.TikaInputStream.get(is), handler, metadata, parseContext);
         } catch (AssertionError | Exception primaryEx) {
             metadata.add("tika:parsing-warning", "primary-parse-failed:" + primaryEx.getClass().getSimpleName());
             try {
-                String customConfig = "<properties>\n" +
-                        "  <parsers>\n" +
-                        "    <parser class=\"ai.pipestream.shaded.tika.parser.microsoft.EMFParser\" enabled=\"false\"/>\n" +
-                        "  </parsers>\n" +
-                        "</properties>";
-                try (InputStream cfg = new ByteArrayInputStream(customConfig.getBytes())) {
-                    ai.pipestream.shaded.tika.config.TikaConfig tikaCfg = new ai.pipestream.shaded.tika.config.TikaConfig(cfg);
-                    Parser fallbackParser = new AutoDetectParser(tikaCfg);
-                    ParseContext fallbackCtx = new ParseContext();
-                    fallbackCtx.set(Parser.class, fallbackParser);
-                    try (InputStream is2 = new ByteArrayInputStream(content.toByteArray())) {
-                        fallbackParser.parse(is2, handler, metadata, fallbackCtx);
-                        metadata.add("tika:parsing-warning", "fallback:disabledEmfParser");
-                    }
+                // In Tika 4, exclude EMF parser programmatically
+                java.util.Collection<Class<? extends Parser>> excludedParsers = new java.util.ArrayList<>();
+                try {
+                    @SuppressWarnings("unchecked")
+                    Class<? extends Parser> emfParserClass = (Class<? extends Parser>)
+                            Class.forName("ai.pipestream.shaded.tika.parser.microsoft.EMFParser");
+                    excludedParsers.add(emfParserClass);
+                } catch (ClassNotFoundException ignored) {}
+
+                ai.pipestream.shaded.tika.parser.DefaultParser defaultParser = new ai.pipestream.shaded.tika.parser.DefaultParser(
+                        ai.pipestream.shaded.tika.mime.MediaTypeRegistry.getDefaultRegistry(),
+                        new ai.pipestream.shaded.tika.config.ServiceLoader(),
+                        excludedParsers);
+                Parser fallbackParser = new AutoDetectParser(
+                        new ai.pipestream.shaded.tika.detect.DefaultDetector(), defaultParser);
+                ParseContext fallbackCtx = new ParseContext();
+                fallbackCtx.set(Parser.class, fallbackParser);
+                try (InputStream is2 = new ByteArrayInputStream(content.toByteArray())) {
+                    fallbackParser.parse(ai.pipestream.shaded.tika.io.TikaInputStream.get(is2), handler, metadata, fallbackCtx);
+                    metadata.add("tika:parsing-warning", "fallback:disabledEmfParser");
                 }
             } catch (Exception fallbackEx) {
                 metadata.add("tika:parsing-warning", "fallback-failed:" + fallbackEx.getClass().getSimpleName());

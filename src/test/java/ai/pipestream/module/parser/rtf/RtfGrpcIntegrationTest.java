@@ -1,10 +1,10 @@
 package ai.pipestream.module.parser.rtf;
 
-import ai.pipestream.data.module.ModuleProcessRequest;
-import ai.pipestream.data.module.ModuleProcessResponse;
-import ai.pipestream.data.module.PipeStepProcessor;
-import ai.pipestream.data.module.ProcessConfiguration;
-import ai.pipestream.data.module.ServiceMetadata;
+import ai.pipestream.data.module.v1.ProcessDataRequest;
+import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.PipeStepProcessorService;
+import ai.pipestream.data.v1.ProcessConfiguration;
+import ai.pipestream.data.module.v1.ServiceMetadata;
 import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.module.parser.util.ReactiveTestDocumentLoader;
 import ai.pipestream.parsed.data.rtf.v1.RtfMetadata;
@@ -25,7 +25,7 @@ import static org.hamcrest.Matchers.*;
 public class RtfGrpcIntegrationTest {
 
     @GrpcClient
-    PipeStepProcessor parserService;
+    PipeStepProcessorService parserService;
 
     @Test
     public void testProcessSampleRtfsViaGrpc() {
@@ -41,11 +41,11 @@ public class RtfGrpcIntegrationTest {
                 .await().atMost(Duration.ofMinutes(1));
 
         assertThat("Should process at least one RTF", results.size(), greaterThan(0));
-        long successes = results.stream().filter(ModuleProcessResponse::getSuccess).count();
+        long successes = results.stream().filter(ProcessDataResponse::getSuccess).count();
         assertThat("Most RTFs should parse successfully", successes, greaterThanOrEqualTo(1L));
 
         boolean foundTyped = false;
-        for (ModuleProcessResponse resp : results) {
+        for (ProcessDataResponse resp : results) {
             if (!resp.getSuccess() || !resp.hasOutputDoc()) continue;
             PipeDoc out = resp.getOutputDoc();
             assertThat("structured_data should be present", out.hasStructuredData(), is(true));
@@ -69,7 +69,7 @@ public class RtfGrpcIntegrationTest {
         assertThat("Should find at least one RTF with typed metadata", foundTyped, is(true));
     }
 
-    private Uni<ModuleProcessResponse> processDoc(PipeDoc doc, ProcessConfiguration config) {
+    private Uni<ProcessDataResponse> processDoc(PipeDoc doc, ProcessConfiguration config) {
         ServiceMetadata metadata = ServiceMetadata.newBuilder()
                 .setPipelineName("rtf-it-pipeline")
                 .setPipeStepName("parser-rtf-it")
@@ -77,7 +77,7 @@ public class RtfGrpcIntegrationTest {
                 .setCurrentHopNumber(1)
                 .build();
 
-        ModuleProcessRequest request = ModuleProcessRequest.newBuilder()
+        ProcessDataRequest request = ProcessDataRequest.newBuilder()
                 .setDocument(doc)
                 .setConfig(config)
                 .setMetadata(metadata)

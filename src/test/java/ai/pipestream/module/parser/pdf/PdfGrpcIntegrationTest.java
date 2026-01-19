@@ -1,10 +1,10 @@
 package ai.pipestream.module.parser.pdf;
 
-import ai.pipestream.data.module.ModuleProcessRequest;
-import ai.pipestream.data.module.ModuleProcessResponse;
-import ai.pipestream.data.module.PipeStepProcessor;
-import ai.pipestream.data.module.ProcessConfiguration;
-import ai.pipestream.data.module.ServiceMetadata;
+import ai.pipestream.data.module.v1.ProcessDataRequest;
+import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.PipeStepProcessorService;
+import ai.pipestream.data.v1.ProcessConfiguration;
+import ai.pipestream.data.module.v1.ServiceMetadata;
 import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.parsed.data.tika.v1.TikaResponse;
 import com.google.protobuf.Any;
@@ -27,7 +27,7 @@ public class PdfGrpcIntegrationTest {
     private static final Logger LOG = Logger.getLogger(PdfGrpcIntegrationTest.class);
 
     @GrpcClient
-    PipeStepProcessor parserService;
+    PipeStepProcessorService parserService;
 
     @Test
     public void testProcessSamplePdfsViaGrpc() {
@@ -115,7 +115,7 @@ public class PdfGrpcIntegrationTest {
         }
     }
 
-    private Uni<ModuleProcessResponse> processDoc(PipeDoc doc, ProcessConfiguration config) {
+    private Uni<ProcessDataResponse> processDoc(PipeDoc doc, ProcessConfiguration config) {
         ServiceMetadata metadata = ServiceMetadata.newBuilder()
                 .setPipelineName("pdf-it-pipeline")
                 .setPipeStepName("parser-pdf-it")
@@ -123,7 +123,7 @@ public class PdfGrpcIntegrationTest {
                 .setCurrentHopNumber(1)
                 .build();
 
-        ModuleProcessRequest request = ModuleProcessRequest.newBuilder()
+        ProcessDataRequest request = ProcessDataRequest.newBuilder()
                 .setDocument(doc)
                 .setConfig(config)
                 .setMetadata(metadata)

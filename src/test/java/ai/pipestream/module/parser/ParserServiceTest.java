@@ -1,6 +1,6 @@
 package ai.pipestream.module.parser;
 
-import ai.pipestream.data.module.PipeStepProcessor;
+import ai.pipestream.data.module.v1.PipeStepProcessorService;
 import io.quarkus.grpc.GrpcClient;
 import io.quarkus.test.junit.QuarkusTest;
 
@@ -8,10 +8,10 @@ import io.quarkus.test.junit.QuarkusTest;
 class ParserServiceTest extends ParserServiceTestBase {
 
     @GrpcClient
-    PipeStepProcessor pipeStepProcessor;
+    PipeStepProcessorService pipeStepProcessor;
 
     @Override
-    protected PipeStepProcessor getParserService() {
+    protected PipeStepProcessorService getParserService() {
         return pipeStepProcessor;
     }
 }

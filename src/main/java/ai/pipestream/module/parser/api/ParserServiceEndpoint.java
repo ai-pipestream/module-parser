@@ -1,6 +1,6 @@
 package ai.pipestream.module.parser.api;
 
-import ai.pipestream.common.service.SchemaExtractorService;
+import ai.pipestream.module.parser.schema.SchemaExtractorService;
 import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.data.v1.SearchMetadata;
 import ai.pipestream.module.parser.config.ParserConfig;

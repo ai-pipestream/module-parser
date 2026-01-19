@@ -2,7 +2,11 @@ package ai.pipestream.module.parser;
 
 import com.google.protobuf.Struct;
 import com.google.protobuf.util.JsonFormat;
-import ai.pipestream.data.module.*;
+import ai.pipestream.data.module.v1.ProcessDataRequest;
+import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.v1.ProcessConfiguration;
+import ai.pipestream.data.module.v1.ServiceMetadata;
+import ai.pipestream.data.module.v1.PipeStepProcessorService;
 import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.module.parser.config.ParserConfig;
 import ai.pipestream.module.parser.config.AdvancedOptions;
@@ -30,7 +34,7 @@ public class EnhancedParsingTest {
 
     @Inject
     @GrpcClient
-    PipeStepProcessor parserService;
+    PipeStepProcessorService parserService;
 
     @Test
     public void testEnhancedParsingWithAllOptions() {
@@ -79,13 +83,13 @@ public class EnhancedParsingTest {
                     try {
                         Struct.Builder structBuilder = Struct.newBuilder();
                         JsonFormat.parser().merge(configJson, structBuilder);
-                        configBuilder.setCustomJsonConfig(structBuilder.build());
+                        configBuilder.setJsonConfig(structBuilder.build());
                     } catch (Exception e) {
                         LOG.warnf("Failed to add custom config: %s", e.getMessage());
                     }
                 }
                 
-                ModuleProcessRequest request = ModuleProcessRequest.newBuilder()
+                ProcessDataRequest request = ProcessDataRequest.newBuilder()
                         .setDocument(testDoc)
                         .setConfig(configBuilder.build())
                         .setMetadata(metadata)
@@ -128,7 +132,7 @@ public class EnhancedParsingTest {
                             }
                         }
                     })
-                    .onFailure().recoverWithItem(ModuleProcessResponse.newBuilder()
+                    .onFailure().recoverWithItem(ProcessDataResponse.newBuilder()
                             .setSuccess(false)
                             .build());
             })
@@ -191,7 +195,7 @@ public class EnhancedParsingTest {
                         .putConfigParams("extractMetadata", "false") // Minimal mode
                         .build();
                 
-                ModuleProcessRequest request = ModuleProcessRequest.newBuilder()
+                ProcessDataRequest request = ProcessDataRequest.newBuilder()
                         .setDocument(testDoc)
                         .setConfig(config)
                         .setMetadata(metadata)
@@ -209,7 +213,7 @@ public class EnhancedParsingTest {
                             }
                         }
                     })
-                    .onFailure().recoverWithItem(ModuleProcessResponse.newBuilder()
+                    .onFailure().recoverWithItem(ProcessDataResponse.newBuilder()
                             .setSuccess(false)
                             .build());
             })

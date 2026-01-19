@@ -3,11 +3,11 @@ package ai.pipestream.module.parser.pdf;
 import com.google.protobuf.Any;
 import com.google.protobuf.Struct;
 import com.google.protobuf.Descriptors.FieldDescriptor;
-import ai.pipestream.data.module.ModuleProcessRequest;
-import ai.pipestream.data.module.ModuleProcessResponse;
-import ai.pipestream.data.module.PipeStepProcessor;
-import ai.pipestream.data.module.ProcessConfiguration;
-import ai.pipestream.data.module.ServiceMetadata;
+import ai.pipestream.data.module.v1.ProcessDataRequest;
+import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.PipeStepProcessorService;
+import ai.pipestream.data.v1.ProcessConfiguration;
+import ai.pipestream.data.module.v1.ServiceMetadata;
 import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.module.parser.util.ReactiveTestDocumentLoader;
 import ai.pipestream.parsed.data.pdf.v1.PdfMetadata;
@@ -30,7 +30,7 @@ public class PdfFieldCoverageTest {
     private static final Logger LOG = Logger.getLogger(PdfFieldCoverageTest.class);
 
     @GrpcClient
-    PipeStepProcessor parserService;
+    PipeStepProcessorService parserService;
 
     @Test
     public void analyzePdfFieldCoverage() {
@@ -124,7 +124,7 @@ public class PdfFieldCoverageTest {
                 .forEach(e -> LOG.infof(" - %s: %d", e.getKey(), e.getValue()));
     }
 
-    private Uni<ModuleProcessResponse> processDoc(PipeDoc doc, ProcessConfiguration config) {
+    private Uni<ProcessDataResponse> processDoc(PipeDoc doc, ProcessConfiguration config) {
         ServiceMetadata metadata = ServiceMetadata.newBuilder()
                 .setPipelineName("pdf-coverage-pipeline")
                 .setPipeStepName("parser-pdf-coverage")
@@ -132,7 +132,7 @@ public class PdfFieldCoverageTest {
                 .setCurrentHopNumber(1)
                 .build();
 
-        ModuleProcessRequest request = ModuleProcessRequest.newBuilder()
+        ProcessDataRequest request = ProcessDataRequest.newBuilder()
                 .setDocument(doc)
                 .setConfig(config)
                 .setMetadata(metadata)

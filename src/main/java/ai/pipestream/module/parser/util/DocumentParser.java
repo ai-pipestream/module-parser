@@ -4,16 +4,20 @@ import ai.pipestream.data.v1.DocOutline;
 import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.data.v1.SearchMetadata;
 import ai.pipestream.shaded.tika.Tika;
-import ai.pipestream.shaded.tika.config.TikaConfig;
 import ai.pipestream.shaded.tika.exception.TikaException;
 import ai.pipestream.shaded.tika.metadata.Metadata;
 import ai.pipestream.shaded.tika.metadata.XMPRights;
 import ai.pipestream.shaded.tika.mime.MediaType;
+import ai.pipestream.shaded.tika.mime.MediaTypeRegistry;
 import ai.pipestream.shaded.tika.parser.AutoDetectParser;
+import ai.pipestream.shaded.tika.parser.DefaultParser;
 import ai.pipestream.shaded.tika.parser.ParseContext;
 import ai.pipestream.shaded.tika.parser.Parser;
 import ai.pipestream.shaded.tika.sax.BodyContentHandler;
 import ai.pipestream.shaded.tika.sax.WriteOutContentHandler;
+import ai.pipestream.shaded.tika.config.ServiceLoader;
+import ai.pipestream.shaded.tika.detect.DefaultDetector;
+import ai.pipestream.shaded.tika.io.TikaInputStream;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Struct;
 import com.google.protobuf.Value;
@@ -180,23 +184,16 @@ public class DocumentParser {
             }
             
             try {
-                parser.parse(stream, handler, metadata, parseContext);
+                parser.parse(TikaInputStream.get(stream), handler, metadata, parseContext);
             } catch (org.apache.commons.compress.archivers.ArchiveException ae) {
                 // Some formats (e.g., fonts) can be misrouted into archive detection.
-                // Retry using a config without DefaultZipContainerDetector.
-                LOG.warnf(ae, "Archive detection failed; retrying without zip container detector");
-                String noZipDetectorCfg = "<properties>\n" +
-                        "  <detectors>\n" +
-                        "    <detector class=\"ai.pipestream.shaded.tika.detect.DefaultDetector\"/>\n" +
-                        "  </detectors>\n" +
-                        "</properties>";
-                try (InputStream cfg = new ByteArrayInputStream(noZipDetectorCfg.getBytes());
-                     InputStream retry = new ByteArrayInputStream(content.toByteArray())) {
-                    TikaConfig tikaCfg = new TikaConfig(cfg);
-                    Parser retryParser = new AutoDetectParser(tikaCfg);
+                // Retry using basic AutoDetectParser without complex detection
+                LOG.warnf(ae, "Archive detection failed; retrying with basic parser");
+                try (InputStream retry = new ByteArrayInputStream(content.toByteArray())) {
+                    Parser retryParser = new AutoDetectParser(new DefaultDetector());
                     ParseContext retryCtx = new ParseContext();
                     retryCtx.set(Parser.class, retryParser);
-                    retryParser.parse(retry, handler, metadata, retryCtx);
+                    retryParser.parse(TikaInputStream.get(retry), handler, metadata, retryCtx);
                 }
             }
         }
@@ -300,29 +297,30 @@ public class DocumentParser {
         } else if (disableEmfParser) {
             LOG.infof("Creating custom parser with EMF parser disabled for file: %s", filename);
             try {
-                String customConfig = createCustomParserConfig();
-                try (InputStream is = new ByteArrayInputStream(customConfig.getBytes())) {
-                    TikaConfig tikaConfig = new TikaConfig(is);
-                    return new AutoDetectParser(tikaConfig);
+                // In Tika 4, exclude parsers programmatically via DefaultParser
+                java.util.Collection<Class<? extends Parser>> excludedParsers = new java.util.ArrayList<>();
+                try {
+                    @SuppressWarnings("unchecked")
+                    Class<? extends Parser> emfParserClass = (Class<? extends Parser>)
+                            Class.forName("ai.pipestream.shaded.tika.parser.microsoft.EMFParser");
+                    excludedParsers.add(emfParserClass);
+                } catch (ClassNotFoundException e) {
+                    LOG.debug("EMFParser class not found, proceeding without exclusion");
                 }
+                DefaultParser defaultParser = new DefaultParser(
+                        MediaTypeRegistry.getDefaultRegistry(),
+                        new ServiceLoader(),
+                        excludedParsers);
+                return new AutoDetectParser(new DefaultDetector(), defaultParser);
             } catch (Exception e) {
                 LOG.error("Failed to create custom parser configuration: {}", e.getMessage(), e);
                 LOG.info("Falling back to default Tika configuration");
                 return new AutoDetectParser();
             }
         } else if (enableGeoTopicParser) {
-            LOG.info("Creating parser with GeoTopicParser enabled");
-            try {
-                String geoTopicConfig = createGeoTopicParserConfig();
-                try (InputStream is = new ByteArrayInputStream(geoTopicConfig.getBytes())) {
-                    TikaConfig tikaConfig = new TikaConfig(is);
-                    return new AutoDetectParser(tikaConfig);
-                }
-            } catch (Exception e) {
-                LOG.error("Failed to create GeoTopicParser configuration: {}", e.getMessage(), e);
-                LOG.info("Falling back to default Tika configuration");
-                return new AutoDetectParser();
-            }
+            // GeoTopicParser is loaded via ServiceLoader in Tika 4 if available
+            LOG.info("Using default parser (GeoTopicParser loaded via ServiceLoader if available)");
+            return new AutoDetectParser();
         } else {
             LOG.debug("Using default Tika configuration");
             return new AutoDetectParser();
@@ -772,11 +770,11 @@ public class DocumentParser {
      * @return A Set of strings, where each string is a supported MIME type (e.g., "application/pdf").
      */
     public static Set<String> getSupportedMimeTypes() {
-        // Get the default Tika configuration which contains the media type registry
-        TikaConfig config = TikaConfig.getDefaultConfig();
+        // Get the default media type registry (Tika 4 API)
+        MediaTypeRegistry registry = MediaTypeRegistry.getDefaultRegistry();
 
-        // Get the registry and then get all the media types from it
-        Set<MediaType> mediaTypes = config.getMediaTypeRegistry().getTypes();
+        // Get all the media types from the registry
+        Set<MediaType> mediaTypes = registry.getTypes();
 
         // Convert the Set<MediaType> to a Set<String> for easier use
         return mediaTypes.stream()

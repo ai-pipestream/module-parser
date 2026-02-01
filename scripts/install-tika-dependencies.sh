@@ -53,7 +53,7 @@ if [ "$PKG_MANAGER" = "apt-get" ]; then
         pst-utils \
         file \
         binutils \
-        python3-pip \
+        pipx \
         golang-go \
         build-essential \
         autoconf \
@@ -70,7 +70,18 @@ if [ "$PKG_MANAGER" = "apt-get" ]; then
     # Install Magika (AI-powered file type detection)
     echo "Installing Magika..."
     if ! command -v magika &> /dev/null; then
-        pip3 install --user magika || echo "  Warning: Magika installation failed (optional)"
+        # Ensure pipx is available
+        if ! command -v pipx &> /dev/null; then
+            echo "  Warning: pipx not found, attempting to install..."
+            sudo $INSTALL_CMD pipx || echo "  Warning: Could not install pipx"
+        fi
+
+        # Install magika using pipx (avoids PEP 668 issues)
+        if command -v pipx &> /dev/null; then
+            pipx install magika && pipx ensurepath || echo "  Warning: Magika installation failed (optional)"
+        else
+            echo "  Warning: Skipping Magika - pipx not available"
+        fi
     else
         echo "  Magika already installed"
     fi
@@ -80,9 +91,20 @@ if [ "$PKG_MANAGER" = "apt-get" ]; then
     if ! command -v sf &> /dev/null; then
         # Try to install via Go
         if command -v go &> /dev/null; then
+            GOPATH=$(go env GOPATH)
+            GOBIN="$GOPATH/bin"
+
             go install github.com/richardlehane/siegfried/cmd/sf@latest || echo "  Warning: Siegfried installation failed (optional)"
+
             # Add Go bin to PATH for current session
-            export PATH="$PATH:$(go env GOPATH)/bin"
+            export PATH="$PATH:$GOBIN"
+
+            # Check if installation succeeded
+            if [ -f "$GOBIN/sf" ]; then
+                echo "  Siegfried installed to $GOBIN/sf"
+                echo "  Note: Add the following to your ~/.bashrc or ~/.zshrc for permanent PATH:"
+                echo "    export PATH=\"\$PATH:\$(go env GOPATH)/bin\""
+            fi
         else
             echo "  Warning: Go not available, skipping Siegfried"
         fi
@@ -93,18 +115,31 @@ if [ "$PKG_MANAGER" = "apt-get" ]; then
     # Install LibreDWG (AutoCAD DWG file parsing)
     echo "Installing LibreDWG..."
     if ! command -v dwgread &> /dev/null; then
-        LIBREDWG_TMP=$(mktemp -d)
-        (
-            cd "$LIBREDWG_TMP"
-            git clone --depth 1 https://github.com/LibreDWG/libredwg.git
-            cd libredwg
-            sh autogen.sh
-            ./configure
-            make -j$(nproc)
-            sudo make install
-            sudo ldconfig
-        ) || echo "  Warning: LibreDWG installation failed (optional)"
-        rm -rf "$LIBREDWG_TMP"
+        # Check if git is available
+        if ! command -v git &> /dev/null; then
+            echo "  Warning: git not found, installing..."
+            sudo $INSTALL_CMD git || echo "  Warning: Could not install git"
+        fi
+
+        if command -v git &> /dev/null; then
+            LIBREDWG_TMP=$(mktemp -d)
+            (
+                cd "$LIBREDWG_TMP"
+                echo "  Cloning LibreDWG repository..."
+                git clone --depth 1 https://github.com/LibreDWG/libredwg.git
+                cd libredwg
+                echo "  Building LibreDWG (this may take a few minutes)..."
+                sh autogen.sh
+                ./configure
+                make -j$(nproc)
+                sudo make install
+                sudo ldconfig
+                echo "  LibreDWG installed successfully"
+            ) || echo "  Warning: LibreDWG installation failed (optional)"
+            rm -rf "$LIBREDWG_TMP"
+        else
+            echo "  Warning: Skipping LibreDWG - git not available"
+        fi
     else
         echo "  LibreDWG already installed"
     fi
@@ -195,6 +230,10 @@ if [ "$PKG_MANAGER" = "apt-get" ]; then
     echo "On Ubuntu/Debian, the following were automatically installed above:"
     echo "  - LibreDWG, Siegfried, Magika"
     echo ""
+    echo "IMPORTANT: If pipx was just installed, you may need to:"
+    echo "  1. Run: pipx ensurepath"
+    echo "  2. Restart your shell or run: source ~/.bashrc"
+    echo ""
     echo "If any failed, you can manually install:"
 else
     echo "The following tools require manual installation:"
@@ -221,10 +260,12 @@ echo ""
 
 echo "3. Magika (AI-powered file type detection)"
 echo "   Project: https://github.com/google/magika"
-echo "   Install via pip:"
-echo "     pip install magika"
-echo "   Or:"
-echo "     pip3 install magika"
+echo "   Install via pipx (recommended):"
+echo "     pipx install magika"
+echo "   Or using pip in a virtual environment:"
+echo "     python3 -m venv ~/.magika-venv"
+echo "     ~/.magika-venv/bin/pip install magika"
+echo "     sudo ln -s ~/.magika-venv/bin/magika /usr/local/bin/magika"
 echo ""
 
 echo "=========================================="

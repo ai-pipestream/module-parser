@@ -70,7 +70,7 @@ dependencies {
     implementation 'com.google.protobuf:protobuf-java-util'
 
     // Apache Tika dependencies - use shaded package
-    implementation 'ai.pipestream:tika4-shaded:0.1.15-SNAPSHOT'
+    implementation 'ai.pipestream:tika4-shaded:0.1.16'
 
     // Markdown parsing (commonmark)
     implementation libs.commonmark

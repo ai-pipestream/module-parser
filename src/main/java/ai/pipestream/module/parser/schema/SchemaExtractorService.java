@@ -47,7 +47,7 @@ public class SchemaExtractorService {
                 return Optional.empty();
             }
 
-            byte[] jsonBytes = documentService.getDocument(Format.JSON);
+            byte[] jsonBytes = documentService.getDocument(null, Format.JSON);
             if (jsonBytes == null || jsonBytes.length == 0) {
                 LOG.warnf("OpenAPI document is empty - schema extraction failed for: %s", schemaName);
                 return Optional.empty();
@@ -168,7 +168,7 @@ public class SchemaExtractorService {
                 return Optional.empty();
             }
 
-            byte[] jsonBytes = documentService.getDocument(Format.JSON);
+            byte[] jsonBytes = documentService.getDocument(null, Format.JSON);
             if (jsonBytes == null || jsonBytes.length == 0) {
                 LOG.warn("OpenAPI document is empty - cannot resolve refs");
                 return Optional.empty();

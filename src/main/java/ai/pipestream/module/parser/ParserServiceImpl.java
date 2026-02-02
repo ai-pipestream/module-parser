@@ -8,6 +8,7 @@ import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.v1.SearchMetadata;
 import ai.pipestream.parsed.data.tika.v1.TikaResponse;
+import ai.pipestream.parsed.data.docling.v1.DoclingResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.Struct;
 import com.google.protobuf.util.JsonFormat;
@@ -18,6 +19,7 @@ import com.google.protobuf.Any;
 import ai.pipestream.module.parser.schema.SchemaEnhancer;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.jboss.logging.Logger;
@@ -52,6 +54,9 @@ public class ParserServiceImpl implements PipeStepProcessorService {
 
     @Inject
     DocumentParser documentParser;
+
+    @Inject
+    ai.pipestream.module.parser.docling.DoclingMetadataExtractor doclingMetadataExtractor;
 
     @Override
     public Uni<ProcessDataResponse> processData(ProcessDataRequest request) {
@@ -127,20 +132,109 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                                 );
                             }
 
-                            // Optionally build comprehensive TikaResponse and pack into structured_data
+                            // Build comprehensive metadata responses using concurrent extraction
                             PipeDoc.Builder outputDocBuilder = parsedDoc.toBuilder()
                                     .setDocId(request.getDocument().getDocId());
 
+                            // Create Unis for concurrent Tika and Docling extraction
+                            Uni<TikaResponse> tikaUni = null;
+                            Uni<DoclingResponse> doclingUni = null;
+
+                            // Create final copies for lambda capture
+                            final com.google.protobuf.ByteString finalBlobData = blobData;
+                            final String finalFilename = filename;
+                            final String docId = request.getDocument().getDocId();
+                            final String bodyText = parsedDoc.getSearchMetadata().getBody();
+
+                            if (shouldExtractComprehensiveMetadata(config)) {
+                                tikaUni = Uni.createFrom().item(() -> {
+                                    try {
+                                        return extractTikaResponse(finalBlobData, finalFilename, bodyText, docId);
+                                    } catch (Exception e) {
+                                        LOG.warnf(e, "Tika extraction failed for document %s", docId);
+                                        return null;
+                                    }
+                                });
+                            }
+
+                            if (shouldExtractDoclingMetadata(config)) {
+                                final byte[] contentBytes = finalBlobData.toByteArray();
+                                doclingUni = Uni.createFrom().item(() -> {
+                                    try {
+                                        return doclingMetadataExtractor.extractComprehensiveMetadata(
+                                            contentBytes, finalFilename, docId);
+                                    } catch (Exception e) {
+                                        LOG.warnf(e, "Docling extraction failed for document %s", docId);
+                                        return null;
+                                    }
+                                });
+                            }
+
+                            // Combine both extractions to run in parallel
+                            if (tikaUni != null || doclingUni != null) {
+                                // Handle cases where one or both extractors are enabled
+                                if (tikaUni != null && doclingUni != null) {
+                                    // Both enabled - run in parallel
+                                    try {
+                                        var tuple = Uni.combine().all().unis(tikaUni, doclingUni).asTuple()
+                                            .await().indefinitely();
+
+                                        TikaResponse tikaResponse = tuple.getItem1();
+                                        DoclingResponse doclingResponse = tuple.getItem2();
+
+                                        // Store TikaResponse in parsed_metadata["tika"]
+                                        if (tikaResponse != null) {
+                                            storeTikaMetadata(outputDocBuilder, tikaResponse);
+                                        } else {
+                                            LOG.warn("Tika extraction returned null; skipping Tika metadata");
+                                        }
+
+                                        // Store DoclingResponse in parsed_metadata["docling"]
+                                        if (doclingResponse != null) {
+                                            storeDoclingMetadata(outputDocBuilder, doclingResponse);
+                                        } else {
+                                            LOG.warn("Docling extraction returned null; skipping Docling metadata");
+                                        }
+                                    } catch (Exception e) {
+                                        LOG.warnf(e, "Failed to extract metadata concurrently");
+                                    }
+                                } else if (tikaUni != null) {
+                                    // Only Tika enabled
+                                    try {
+                                        TikaResponse tikaResponse = tikaUni.await().indefinitely();
+                                        if (tikaResponse != null) {
+                                            storeTikaMetadata(outputDocBuilder, tikaResponse);
+                                        }
+                                    } catch (Exception e) {
+                                        LOG.warnf(e, "Failed to extract Tika metadata");
+                                    }
+                                } else if (doclingUni != null) {
+                                    // Only Docling enabled
+                                    try {
+                                        DoclingResponse doclingResponse = doclingUni.await().indefinitely();
+                                        if (doclingResponse != null) {
+                                            storeDoclingMetadata(outputDocBuilder, doclingResponse);
+                                        }
+                                    } catch (Exception e) {
+                                        LOG.warnf(e, "Failed to extract Docling metadata");
+                                    }
+                                }
+                            }
+
+                            // Continue with post-processing (outline extraction, etc.)
                             if (shouldExtractComprehensiveMetadata(config)) {
                                 try {
-                                    TikaResponse tikaResponse = extractTikaResponse(blobData, filename,
-                                            parsedDoc.getSearchMetadata().getBody(), request.getDocument().getDocId());
-                                    Any tikaAny = Any.pack(tikaResponse);
-                                    outputDocBuilder.setStructuredData(tikaAny);
+                                    // Get TikaResponse from parsed_metadata if it was stored
+                                    TikaResponse tikaResponse = null;
+                                    if (outputDocBuilder.containsParsedMetadata("tika")) {
+                                        Any tikaAny = outputDocBuilder.getParsedMetadataOrThrow("tika").getData();
+                                        tikaResponse = tikaAny.unpack(TikaResponse.class);
+                                    }
 
-                                    // If EPUB, populate SearchMetadata.doc_outline from EPUB TOC
-                                    try {
-                                        if (tikaResponse.hasEpub() && tikaResponse.getEpub().getTableOfContentsCount() > 0) {
+                                    if (tikaResponse != null) {
+                                        // If EPUB, populate SearchMetadata.doc_outline from EPUB TOC
+                                        try {
+                                            if (tikaResponse.hasEpub() && tikaResponse.getEpub().getTableOfContentsCount() > 0) {
                                             ai.pipestream.data.v1.DocOutline outline = ai.pipestream.module.parser.tika.builders.EpubStructureExtractor
                                                     .buildDocOutlineFromToc(tikaResponse.getEpub().getTableOfContentsList());
                                             ai.pipestream.data.v1.SearchMetadata sm = parsedDoc.getSearchMetadata().toBuilder()
@@ -288,17 +382,18 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                                                     }
                                                 } catch (Exception ignored2) {}
                                             }
-                                        }
-                                    } catch (Exception ignored) {}
+                                            }
+                                        } catch (Exception ignored) {}
+                                    }
                                 } catch (Exception e) {
-                                    LOG.warnf(e, "Failed to build TikaResponse; leaving existing structured_data if any");
+                                    LOG.warnf(e, "Failed to get TikaResponse from parsed_metadata");
                                 }
                             }
 
                             PipeDoc outputDoc = outputDocBuilder.build();
 
                             responseBuilder.setOutputDoc(outputDoc)
-                                    .addProcessorLogs("Parser service successfully processed document using Tika")
+                                    .addProcessorLogs("Parser service successfully processed document")
                                     .addProcessorLogs(String.format("Extracted title: '%s'", 
                                             outputDoc.getSearchMetadata().getTitle().isEmpty() ? "none" : outputDoc.getSearchMetadata().getTitle()))
                                     .addProcessorLogs(String.format("Extracted body length: %d characters", 
@@ -355,7 +450,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                         .addProcessorLogs("Error type: " + t.getClass().getSimpleName())
                         .build();
             }
-        });
+        }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
     }
 
     @Override
@@ -460,6 +555,15 @@ public class ParserServiceImpl implements PipeStepProcessorService {
     }
 
     /**
+     * Determines whether to extract Docling metadata.
+     */
+    private boolean shouldExtractDoclingMetadata(ParserConfig config) {
+        // Disabled by default - Tika is the default parser
+        // TODO: Add config option to enable Docling when needed
+        return false;
+    }
+
+    /**
      * Builds a TikaResponse by running a lightweight metadata parse and using TikaMetadataExtractor.
      */
     private TikaResponse extractTikaResponse(com.google.protobuf.ByteString content,
@@ -544,5 +648,57 @@ public class ParserServiceImpl implements PipeStepProcessorService {
         }
 
         return TikaMetadataExtractor.extractComprehensiveMetadata(metadata, parser.getClass().getName(), extractedText, docId);
+    }
+
+    /**
+     * Stores TikaResponse in parsed_metadata["tika"].
+     */
+    private void storeTikaMetadata(PipeDoc.Builder outputDocBuilder, TikaResponse tikaResponse) {
+        try {
+            Any tikaAny = Any.pack(tikaResponse);
+            String tikaVersion = ai.pipestream.module.parser.tika.builders.MetadataUtils.getTikaVersion();
+            com.google.protobuf.Timestamp now = com.google.protobuf.Timestamp.newBuilder()
+                    .setSeconds(System.currentTimeMillis() / 1000)
+                    .setNanos((int) ((System.currentTimeMillis() % 1000) * 1000000))
+                    .build();
+
+            ai.pipestream.data.v1.ParsedMetadata tikaMetadata = ai.pipestream.data.v1.ParsedMetadata.newBuilder()
+                    .setParserName("tika")
+                    .setParserVersion(tikaVersion)
+                    .setParsedAt(now)
+                    .setData(tikaAny)
+                    .build();
+
+            outputDocBuilder.putParsedMetadata("tika", tikaMetadata);
+            LOG.debugf("Successfully stored Tika metadata");
+        } catch (Exception e) {
+            LOG.warnf(e, "Failed to store Tika metadata");
+        }
+    }
+
+    /**
+     * Stores DoclingResponse in parsed_metadata["docling"].
+     */
+    private void storeDoclingMetadata(PipeDoc.Builder outputDocBuilder, DoclingResponse doclingResponse) {
+        try {
+            Any doclingAny = Any.pack(doclingResponse);
+            String doclingVersion = "1.10.0"; // TODO: Get version from DoclingService
+            com.google.protobuf.Timestamp now = com.google.protobuf.Timestamp.newBuilder()
+                    .setSeconds(System.currentTimeMillis() / 1000)
+                    .setNanos((int) ((System.currentTimeMillis() % 1000) * 1000000))
+                    .build();
+
+            ai.pipestream.data.v1.ParsedMetadata doclingMetadata = ai.pipestream.data.v1.ParsedMetadata.newBuilder()
+                    .setParserName("docling")
+                    .setParserVersion(doclingVersion)
+                    .setParsedAt(now)
+                    .setData(doclingAny)
+                    .build();
+
+            outputDocBuilder.putParsedMetadata("docling", doclingMetadata);
+            LOG.debugf("Successfully stored Docling metadata");
+        } catch (Exception e) {
+            LOG.warnf(e, "Failed to store Docling metadata");
+        }
     }
 }

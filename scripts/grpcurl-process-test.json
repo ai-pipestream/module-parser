@@ -1,0 +1,14 @@
+{
+  "document": {
+    "doc_id": "grpcurl-test-doc",
+    "blob_bag": {
+      "blob": {
+        "blob_id": "blob1",
+        "drive_id": "default",
+        "data": "SGVsbG8gV29ybGQhIFRoaXMgaXMgcGxhaW4gdGV4dCB0byBwYXJzZS4=",
+        "filename": "test.txt",
+        "size_bytes": 44
+      }
+    }
+  }
+}

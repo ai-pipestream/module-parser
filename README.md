@@ -158,7 +158,7 @@ The main gRPC service implementation (`ai.pipestream.module.parser.service.Parse
 - Returns `ModuleProcessResponse` containing `PipeDoc`
 
 #### 2. REST API (ParserServiceEndpoint)
-Developer-friendly HTTP endpoints at `/api/parser/service/`:
+Developer-friendly HTTP endpoints at `/modules/parser/api/parser/service/`:
 - `/config` - Get parser configuration JSON schema
 - `/health` - Service health check
 - `/test` - Quick parser testing
@@ -272,13 +272,19 @@ cd module-parser
 ```
 
 The service will start on port `39001` with:
-- gRPC endpoint: `localhost:39001`
-- REST API: `http://localhost:39001/api/parser/service/`
-- Swagger UI: `http://localhost:39001/swagger-ui/`
+- **gRPC** (unchanged by REST path): `localhost:39001` – service `ai.pipestream.data.module.v1.PipeStepProcessorService`
+- **REST API**: `http://localhost:39001/modules/parser/api/parser/service/`
+- **OpenAPI**: `http://localhost:39001/q/openapi`
+- **Swagger UI**: `http://localhost:39001/q/swagger-ui/`
 
-3. **Test with a sample document**
+3. **Test with a sample document (REST)**
 ```bash
-curl -F "file=@sample.pdf" http://localhost:39001/api/parser/service/simple-form
+curl -F "file=@sample.pdf" http://localhost:39001/modules/parser/api/parser/service/parse-file
+```
+
+4. **Test gRPC ProcessData (requires grpcurl)**
+```bash
+grpcurl -plaintext -d @ localhost:39001 ai.pipestream.data.module.v1.PipeStepProcessorService/ProcessData < scripts/grpcurl-process-test.json
 ```
 
 ### Running Tests
@@ -308,7 +314,7 @@ Tests use sample documents from Maven artifacts:
 
 ### REST API
 
-Base path: `/api/parser/service/`
+Base path: `/modules/parser/api/parser/service/`
 
 #### Configuration Endpoints
 

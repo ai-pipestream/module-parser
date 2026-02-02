@@ -7,6 +7,7 @@ import ai.pipestream.module.parser.config.ParserConfig;
 import ai.pipestream.module.parser.util.DocumentParser;
 import com.google.protobuf.ByteString;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -39,7 +40,6 @@ import javax.print.Doc;
 @Path("/api/parser/service")
 @Tag(name = "Parser Service", description = "Document parsing operations using Apache Tika")
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 public class ParserServiceEndpoint {
 
     private static final Logger LOG = Logger.getLogger(ParserServiceEndpoint.class);
@@ -52,6 +52,9 @@ public class ParserServiceEndpoint {
 
     @Inject
     DocumentParser documentParser;
+
+    @Inject
+    ai.pipestream.module.parser.docling.DoclingMetadataExtractor doclingMetadataExtractor;
 
     @ConfigProperty(name = "module.name")
     String moduleName;
@@ -95,6 +98,14 @@ public class ParserServiceEndpoint {
                     .build();
             }
         });
+    }
+
+    @GET
+    @Path("/ping")
+    @Operation(summary = "Simple ping test", description = "Simple endpoint to test if REST is working")
+    @APIResponse(responseCode = "200", description = "Ping successful")
+    public String ping() {
+        return "pong";
     }
 
     @GET
@@ -144,7 +155,7 @@ public class ParserServiceEndpoint {
     @APIResponse(responseCode = "200", description = "Module information retrieved successfully")
     public Uni<Response> getModuleInfo() {
         LOG.debug("Module info request received");
-        
+
         return Uni.createFrom().item(() -> {
             Map<String, Object> info = new HashMap<>();
             info.put("name", moduleName);
@@ -153,7 +164,7 @@ public class ParserServiceEndpoint {
             info.put("applicationName", applicationName);
             info.put("type", "processor");
             info.put("version", "1.0.0");
-            
+
             return info;
         })
         .map(info -> Response.ok(info).build());
@@ -221,6 +232,7 @@ public class ParserServiceEndpoint {
 
     @POST
     @Path("/config/validate")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Operation(summary = "Validate parser configuration", description = "Validate a ParserConfig JSON against the schema")
     @APIResponse(responseCode = "200", description = "Configuration validation result")
     public Uni<Response> validateConfig(ParserConfig config) {
@@ -347,17 +359,37 @@ public class ParserServiceEndpoint {
                     config,
                     "form-input.txt"  // Default filename for form input
                 );
+
+                // Extract Docling metadata (best effort)
+                try {
+                    String docId = parsedDoc.getDocId();
+                    ai.pipestream.parsed.data.docling.v1.DoclingResponse doclingResponse =
+                        doclingMetadataExtractor.extractComprehensiveMetadata(
+                            text.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                            "form-input.txt",
+                            docId,
+                            config.doclingOptions()
+                        );
+                    
+                    if (doclingResponse != null) {
+                        PipeDoc.Builder docBuilder = parsedDoc.toBuilder();
+                        storeDoclingMetadata(docBuilder, doclingResponse);
+                        parsedDoc = docBuilder.build();
+                    }
+                } catch (Exception e) {
+                    LOG.warn("Docling extraction failed in REST endpoint: " + e.getMessage());
+                }
                 
                 // Create response matching gRPC service format
                 Map<String, Object> result = new HashMap<>();
                 result.put("success", true);
                 
-                // Convert PipeDoc to response format
+                // Convert PipeDoc to response format - include ALL fields
                 Map<String, Object> outputDoc = new HashMap<>();
                 outputDoc.put("id", parsedDoc.getDocId());
                 outputDoc.put("title", parsedDoc.getSearchMetadata().getTitle());
                 outputDoc.put("body", parsedDoc.getSearchMetadata().getBody());
-                
+
                 // Add structured data (metadata) if available
                 if (parsedDoc.hasStructuredData()) {
                     Map<String, Object> structuredData = new HashMap<>();
@@ -365,8 +397,25 @@ public class ParserServiceEndpoint {
                     structuredData.put("hasData", true);
                     outputDoc.put("structuredData", structuredData);
                 }
-                
-                result.put("outputDoc", outputDoc);
+
+                // IMPORTANT: Include parsed_metadata to show both Tika and Docling results
+                if (!parsedDoc.getParsedMetadataMap().isEmpty()) {
+                    Map<String, Object> parsedMetadataMap = new HashMap<>();
+                    parsedDoc.getParsedMetadataMap().forEach((key, metadata) -> {
+                        Map<String, Object> metadataObj = new HashMap<>();
+                        metadataObj.put("parser_name", metadata.getParserName());
+                        metadataObj.put("parser_version", metadata.getParserVersion());
+                        metadataObj.put("parsed_at", metadata.getParsedAt().getSeconds());
+                        // Note: The actual proto data is in metadata.getData() as Any type
+                        // For now, just indicate that data is present
+                        metadataObj.put("has_data", metadata.hasData());
+                        metadataObj.put("data_type", metadata.getData().getTypeUrl());
+                        parsedMetadataMap.put(key, metadataObj);
+                    });
+                    outputDoc.put("parsed_metadata", parsedMetadataMap);
+                }
+
+                result.put("output_doc", outputDoc);
                 result.put("processorLogs", List.of(
                     "Parser service successfully processed form text using Tika",
                     "Input text length: " + text.length() + " characters",
@@ -390,7 +439,7 @@ public class ParserServiceEndpoint {
                     .entity(Map.of("error", "Parsing failed: " + e.getMessage()))
                     .build();
             }
-        });
+        }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
     }
 
     @POST
@@ -439,12 +488,12 @@ public class ParserServiceEndpoint {
                 Map<String, Object> result = new HashMap<>();
                 result.put("success", true);
                 
-                // Convert PipeDoc to response format
+                // Convert PipeDoc to response format - include ALL fields
                 Map<String, Object> outputDoc = new HashMap<>();
                 outputDoc.put("id", parsedDoc.getDocId());
                 outputDoc.put("title", parsedDoc.getSearchMetadata().getTitle());
                 outputDoc.put("body", parsedDoc.getSearchMetadata().getBody());
-                
+
                 // Add structured data (metadata) if available
                 if (parsedDoc.hasStructuredData()) {
                     Map<String, Object> structuredData = new HashMap<>();
@@ -452,8 +501,25 @@ public class ParserServiceEndpoint {
                     structuredData.put("hasData", true);
                     outputDoc.put("structuredData", structuredData);
                 }
-                
-                result.put("outputDoc", outputDoc);
+
+                // IMPORTANT: Include parsed_metadata to show both Tika and Docling results
+                if (!parsedDoc.getParsedMetadataMap().isEmpty()) {
+                    Map<String, Object> parsedMetadataMap = new HashMap<>();
+                    parsedDoc.getParsedMetadataMap().forEach((key, metadata) -> {
+                        Map<String, Object> metadataObj = new HashMap<>();
+                        metadataObj.put("parser_name", metadata.getParserName());
+                        metadataObj.put("parser_version", metadata.getParserVersion());
+                        metadataObj.put("parsed_at", metadata.getParsedAt().getSeconds());
+                        // Note: The actual proto data is in metadata.getData() as Any type
+                        // For now, just indicate that data is present
+                        metadataObj.put("has_data", metadata.hasData());
+                        metadataObj.put("data_type", metadata.getData().getTypeUrl());
+                        parsedMetadataMap.put(key, metadataObj);
+                    });
+                    outputDoc.put("parsed_metadata", parsedMetadataMap);
+                }
+
+                result.put("output_doc", outputDoc);
                 result.put("processorLogs", List.of(
                     "Parser service successfully processed JSON input using Tika",
                     "Input text length: " + text.length() + " characters",
@@ -649,7 +715,7 @@ public class ParserServiceEndpoint {
                         outputDoc.put("body", "Demo document content for: " + filename);
                 }
                 
-                result.put("outputDoc", outputDoc);
+                result.put("output_doc", outputDoc);
                 result.put("processorLogs", List.of(
                     "Parser service successfully processed demo document using Tika",
                     "Extracted title: '" + outputDoc.get("title") + "'",
@@ -702,6 +768,26 @@ public class ParserServiceEndpoint {
                     config,
                     file.fileName()
                 );
+
+                // Extract Docling metadata (best effort)
+                try {
+                    String docId = parsedDoc.getDocId();
+                    ai.pipestream.parsed.data.docling.v1.DoclingResponse doclingResponse =
+                        doclingMetadataExtractor.extractComprehensiveMetadata(
+                            fileContent,
+                            file.fileName(),
+                            docId,
+                            config.doclingOptions()
+                        );
+                    
+                    if (doclingResponse != null) {
+                        PipeDoc.Builder docBuilder = parsedDoc.toBuilder();
+                        storeDoclingMetadata(docBuilder, doclingResponse);
+                        parsedDoc = docBuilder.build();
+                    }
+                } catch (Exception e) {
+                    LOG.warn("Docling extraction failed in REST endpoint: " + e.getMessage());
+                }
                 
                 // Create response
                 Map<String, Object> result = new HashMap<>();
@@ -710,12 +796,12 @@ public class ParserServiceEndpoint {
                 result.put("fileSize", file.size());
                 result.put("contentType", file.contentType());
                 
-                // Convert PipeDoc to response format
+                // Convert PipeDoc to response format - include ALL fields
                 Map<String, Object> outputDoc = new HashMap<>();
                 outputDoc.put("id", parsedDoc.getDocId());
                 outputDoc.put("title", parsedDoc.getSearchMetadata().getTitle());
                 outputDoc.put("body", parsedDoc.getSearchMetadata().getBody());
-                
+
                 // Add structured data (metadata) if available
                 if (parsedDoc.hasStructuredData()) {
                     Map<String, Object> structuredData = new HashMap<>();
@@ -723,14 +809,32 @@ public class ParserServiceEndpoint {
                     structuredData.put("hasData", true);
                     outputDoc.put("structuredData", structuredData);
                 }
-                
-                result.put("outputDoc", outputDoc);
+
+                // IMPORTANT: Include parsed_metadata to show both Tika and Docling results
+                if (!parsedDoc.getParsedMetadataMap().isEmpty()) {
+                    Map<String, Object> parsedMetadataMap = new HashMap<>();
+                    parsedDoc.getParsedMetadataMap().forEach((key, metadata) -> {
+                        Map<String, Object> metadataObj = new HashMap<>();
+                        metadataObj.put("parser_name", metadata.getParserName());
+                        metadataObj.put("parser_version", metadata.getParserVersion());
+                        metadataObj.put("parsed_at", metadata.getParsedAt().getSeconds());
+                        // Note: The actual proto data is in metadata.getData() as Any type
+                        // For now, just indicate that data is present
+                        metadataObj.put("has_data", metadata.hasData());
+                        metadataObj.put("data_type", metadata.getData().getTypeUrl());
+                        parsedMetadataMap.put(key, metadataObj);
+                    });
+                    outputDoc.put("parsed_metadata", parsedMetadataMap);
+                }
+
+                result.put("output_doc", outputDoc);
                 result.put("processorLogs", List.of(
-                    "Parser service successfully processed uploaded file using Tika",
+                    "Parser service successfully processed uploaded file using Tika and Docling",
                     "File type detected: " + (file.contentType() != null ? file.contentType() : "unknown"),
                     "Extracted title: '" + parsedDoc.getSearchMetadata().getTitle() + "'",
                     "Extracted body length: " + parsedDoc.getSearchMetadata().getBody().length() + " characters",
-                    "Structured data available: " + (parsedDoc.hasStructuredData() ? "yes" : "no")
+                    "Structured data available: " + (parsedDoc.hasStructuredData() ? "yes" : "no"),
+                    "Parsers used: " + String.join(", ", parsedDoc.getParsedMetadataMap().keySet())
                 ));
                 
                 return Response.ok(result).build();
@@ -741,6 +845,32 @@ public class ParserServiceEndpoint {
                     .entity(Map.of("error", "File parsing failed: " + e.getMessage()))
                     .build();
             }
-        });
+        }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+    }
+
+    /**
+     * Stores DoclingResponse in parsed_metadata["docling"].
+     */
+    private void storeDoclingMetadata(PipeDoc.Builder outputDocBuilder, ai.pipestream.parsed.data.docling.v1.DoclingResponse doclingResponse) {
+        try {
+            com.google.protobuf.Any doclingAny = com.google.protobuf.Any.pack(doclingResponse);
+            String doclingVersion = "1.10.0"; // TODO: Get version from DoclingService
+            com.google.protobuf.Timestamp now = com.google.protobuf.Timestamp.newBuilder()
+                    .setSeconds(System.currentTimeMillis() / 1000)
+                    .setNanos((int) ((System.currentTimeMillis() % 1000) * 1000000))
+                    .build();
+
+            ai.pipestream.data.v1.ParsedMetadata doclingMetadata = ai.pipestream.data.v1.ParsedMetadata.newBuilder()
+                    .setParserName("docling")
+                    .setParserVersion(doclingVersion)
+                    .setParsedAt(now)
+                    .setData(doclingAny)
+                    .build();
+
+            outputDocBuilder.putParsedMetadata("docling", doclingMetadata);
+            LOG.debugf("Successfully stored Docling metadata");
+        } catch (Exception e) {
+            LOG.warnf(e, "Failed to store Docling metadata");
+        }
     }
 }

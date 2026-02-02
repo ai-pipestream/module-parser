@@ -51,8 +51,8 @@ public class OfficeFieldCoverageTest {
                             processed.incrementAndGet();
                             if (!resp.getSuccess() || !resp.hasOutputDoc()) return;
                             PipeDoc out = resp.getOutputDoc();
-                            if (!out.hasStructuredData()) return;
-                            Any any = out.getStructuredData();
+                            if (!out.getParsedMetadataMap().containsKey("tika")) return;
+                            Any any = out.getParsedMetadataMap().get("tika").getData();
                             if (!any.is(TikaResponse.class)) return;
                             try {
                                 TikaResponse tr = any.unpack(TikaResponse.class);

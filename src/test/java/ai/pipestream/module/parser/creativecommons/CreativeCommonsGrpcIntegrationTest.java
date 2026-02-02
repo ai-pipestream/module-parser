@@ -50,8 +50,8 @@ public class CreativeCommonsGrpcIntegrationTest {
         for (ProcessDataResponse resp : results) {
             if (!resp.getSuccess() || !resp.hasOutputDoc()) continue;
             PipeDoc out = resp.getOutputDoc();
-            assertThat("structured_data should be present", out.hasStructuredData(), is(true));
-            Any any = out.getStructuredData();
+            assertThat("structured_data should be present", out.getParsedMetadataMap().containsKey("tika"), is(true));
+            Any any = out.getParsedMetadataMap().get("tika").getData();
             if (!any.is(TikaResponse.class)) continue;
             try {
                 TikaResponse tr = any.unpack(TikaResponse.class);

@@ -47,9 +47,9 @@ public class OfficeGrpcIntegrationTest {
                             if (resp.getSuccess() && resp.hasOutputDoc()) {
                                 tracker.recordSuccess();
                                 PipeDoc out = resp.getOutputDoc();
-                                if (out.hasStructuredData()) {
+                                if (out.getParsedMetadataMap().containsKey("tika")) {
                                     docsWithStructured.incrementAndGet();
-                                    Any any = out.getStructuredData();
+                                    Any any = out.getParsedMetadataMap().get("tika").getData();
                                     if (any.is(TikaResponse.class)) {
                                         try {
                                             TikaResponse tr = any.unpack(TikaResponse.class);

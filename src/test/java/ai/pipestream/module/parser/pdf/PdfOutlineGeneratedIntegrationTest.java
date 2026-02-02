@@ -76,8 +76,8 @@ public class PdfOutlineGeneratedIntegrationTest {
         assertThat(out.getSearchMetadata().getDocOutline().getSectionsCount(), greaterThan(0));
 
         // Also ensure structured_data is present and typed
-        assertThat(out.hasStructuredData(), is(true));
-        Any any = out.getStructuredData();
+        assertThat(out.getParsedMetadataMap().containsKey("tika"), is(true));
+        Any any = out.getParsedMetadataMap().get("tika").getData();
         assertThat(any.is(TikaResponse.class), is(true));
     }
 

@@ -72,7 +72,10 @@ public abstract class ParserServiceTestBase {
 
         assertThat("Parser should successfully extract metadata", response.getSuccess(), is(true));
         PipeDoc outputDoc = response.getOutputDoc();
-        assertThat("Document should have structured data (metadata)", outputDoc.hasStructuredData(), is(true));
+        assertThat("Document should have parsed metadata from Tika",
+                outputDoc.getParsedMetadataMap().containsKey("tika"), is(true));
+        assertThat("Tika metadata should have parser name set",
+                outputDoc.getParsedMetadataMap().get("tika").getParserName(), is("tika"));
         assertThat("Processing logs should mention metadata extraction",
                 response.getProcessorLogsList(), hasItem(containsString("Extracted custom data fields")));
     }
@@ -141,20 +144,8 @@ public abstract class ParserServiceTestBase {
                 response.getProcessorLogsList(), hasItem(containsString("no document")));
     }
 
-    @Test
-    void testServiceRegistration() {
-        GetServiceRegistrationRequest request = GetServiceRegistrationRequest.newBuilder().build();
-
-        var registration = getParserService().getServiceRegistration(request)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .getItem();
-
-        assertThat("Module name should be 'parser'", registration.getModuleName(), is(equalTo("parser")));
-        assertThat("Registration should include JSON schema", registration.hasJsonConfigSchema(), is(true));
-        assertThat("JSON schema should be valid", registration.getJsonConfigSchema().length(), is(greaterThan(100)));
-        assertThat("Health check should pass", registration.getHealthCheckPassed(), is(true));
-    }
+    // testServiceRegistration moved to integration tests (ServiceRegistrationIT)
+    // because it requires the OpenAPI document to be fully available at runtime
 
     @Test
     void testParseMultipleDocumentTypes() {

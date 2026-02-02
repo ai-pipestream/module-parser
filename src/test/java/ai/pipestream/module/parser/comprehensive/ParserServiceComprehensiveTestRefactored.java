@@ -88,7 +88,7 @@ public class ParserServiceComprehensiveTestRefactored {
                             var searchMeta = resultDoc.getSearchMetadata();
                             boolean hasBody = searchMeta.hasBody() && !searchMeta.getBody().isEmpty();
                             boolean hasTitle = searchMeta.hasTitle() && !searchMeta.getTitle().isEmpty();
-                            boolean hasStructuredData = resultDoc.hasStructuredData();
+                            boolean hasStructuredData = resultDoc.getParsedMetadataMap().containsKey("tika");
                             
                             // Track statistics
                             if (hasBody) docsWithBody.incrementAndGet();

@@ -84,7 +84,7 @@ public class ParserMetadataAnalysisTest {
                         boolean hasBody = searchMeta.hasBody() && !searchMeta.getBody().isEmpty();
                         boolean hasCustom = searchMeta.hasCustomFields() && 
                                           searchMeta.getCustomFields().getFieldsCount() > 0;
-                        boolean hasStructured = outputDoc.hasStructuredData();
+                        boolean hasStructured = outputDoc.getParsedMetadataMap().containsKey("tika");
                         
                         // Categorize the extraction
                         if (!hasTitle && !hasBody) {

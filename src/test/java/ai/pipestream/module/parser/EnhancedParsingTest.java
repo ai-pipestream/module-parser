@@ -47,8 +47,11 @@ public class EnhancedParsingTest {
         ParserConfig enhancedConfig = ParserConfig.create(
             null, // parsingOptions - use defaults
             AdvancedOptions.comprehensiveExtraction(), // All advanced options enabled
-            null, // contentTypeHandling - use defaults  
+            null, // contentTypeHandling - use defaults
             null, // errorHandling - use defaults
+            null, // doclingOptions - use defaults
+            null, // enableTika - use default (true)
+            null, // enableDocling - use default (false)
             "enhanced-test-config"
         );
         
@@ -105,7 +108,7 @@ public class EnhancedParsingTest {
                             
                             // Check for enhanced extraction features
                             boolean hasEnhancedMetadata = false;
-                            boolean hasStructured = outputDoc.hasStructuredData();
+                            boolean hasStructured = outputDoc.getParsedMetadataMap().containsKey("tika");
                             boolean hasLanguage = searchMeta.hasLanguage() && !searchMeta.getLanguage().isEmpty();
                             boolean hasAuthor = searchMeta.hasAuthor() && !searchMeta.getAuthor().isEmpty();
                             
@@ -172,10 +175,13 @@ public class EnhancedParsingTest {
         
         // Create minimal parser configuration
         ParserConfig minimalConfig = ParserConfig.create(
-            null, 
-            AdvancedOptions.fastProcessing(), // Fast/minimal extraction
-            null,  
             null,
+            AdvancedOptions.fastProcessing(), // Fast/minimal extraction
+            null,
+            null,
+            null, // doclingOptions - use defaults
+            null, // enableTika - use default (true)
+            null, // enableDocling - use default (false)
             "minimal-test-config"
         );
         

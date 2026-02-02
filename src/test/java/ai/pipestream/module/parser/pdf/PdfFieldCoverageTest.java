@@ -57,11 +57,11 @@ public class PdfFieldCoverageTest {
                                 return;
                             }
                             PipeDoc out = resp.getOutputDoc();
-                            if (!out.hasStructuredData()) {
+                            if (!out.getParsedMetadataMap().containsKey("tika")) {
                                 LOG.warn("No structured_data in output");
                                 return;
                             }
-                            Any any = out.getStructuredData();
+                            Any any = out.getParsedMetadataMap().get("tika").getData();
                             if (!any.is(TikaResponse.class)) {
                                 LOG.warn("structured_data is not a TikaResponse; skipping coverage");
                                 return;

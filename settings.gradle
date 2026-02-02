@@ -21,6 +21,7 @@ dependencyResolutionManagement {
         mavenLocal {
             content {
                 includeGroupByRegex "ai\\.pipestream(\\..*)?"
+                includeGroup "io.quarkiverse.docling"
             }
         }
 

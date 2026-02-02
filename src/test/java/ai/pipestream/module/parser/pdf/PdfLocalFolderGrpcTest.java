@@ -57,8 +57,8 @@ public class PdfLocalFolderGrpcTest {
                 if (resp.getSuccess() && resp.hasOutputDoc()) {
                     successes++;
                     PipeDoc out = resp.getOutputDoc();
-                    assertThat("structured_data should exist", out.hasStructuredData(), is(true));
-                    Any any = out.getStructuredData();
+                    assertThat("structured_data should exist", out.getParsedMetadataMap().containsKey("tika"), is(true));
+                    Any any = out.getParsedMetadataMap().get("tika").getData();
                     if (any.is(TikaResponse.class)) {
                         try {
                             TikaResponse tr = any.unpack(TikaResponse.class);

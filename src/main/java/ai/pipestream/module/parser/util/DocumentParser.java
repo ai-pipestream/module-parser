@@ -3,6 +3,10 @@ package ai.pipestream.module.parser.util;
 import ai.pipestream.data.v1.DocOutline;
 import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.data.v1.SearchMetadata;
+import ai.pipestream.data.v1.ParsedMetadata;
+import ai.pipestream.module.parser.tika.TikaMetadataExtractor;
+import ai.pipestream.module.parser.tika.builders.MetadataUtils;
+import ai.pipestream.parsed.data.tika.v1.TikaResponse;
 import ai.pipestream.shaded.tika.Tika;
 import ai.pipestream.shaded.tika.exception.TikaException;
 import ai.pipestream.shaded.tika.metadata.Metadata;
@@ -76,9 +80,6 @@ import java.util.stream.Collectors;
 public class DocumentParser {
     private static final Logger LOG = Logger.getLogger(DocumentParser.class);
     private static final Tika TIKA = new Tika();
-
-    @Inject
-    MetadataMapper metadataMapper;
 
     /**
      * Parses a document and returns a PipeDoc with the parsed content using ParserConfig.
@@ -236,18 +237,45 @@ public class DocumentParser {
         
         PipeDoc.Builder docBuilder = PipeDoc.newBuilder()
                 .setSearchMetadata(searchMetadataBuilder.build());
-        
-        // Add metadata if requested
+
+        // Extract comprehensive Tika metadata and store in parsed_metadata["tika"]
         if (getBooleanConfig(configMap, "extractMetadata", true)) {
-            Map<String, String> metadataMap = metadataMapper.toMap(metadata, configMap);
-            if (!metadataMap.isEmpty()) {
-                Struct.Builder structBuilder = Struct.newBuilder();
-                for (Map.Entry<String, String> entry : metadataMap.entrySet()) {
-                    structBuilder.putFields(entry.getKey(), Value.newBuilder().setStringValue(entry.getValue()).build());
-                }
-                // Store metadata in structured_data field using Any
-                com.google.protobuf.Any metadataAny = com.google.protobuf.Any.pack(structBuilder.build());
-                docBuilder.setStructuredData(metadataAny);
+            try {
+                // Use TikaMetadataExtractor to build comprehensive TikaResponse
+                String parserClass = parser != null ? parser.getClass().getName() : "unknown";
+                String docId = ""; // doc_id will be set by the calling service
+
+                TikaResponse tikaResponse = TikaMetadataExtractor.extractComprehensiveMetadata(
+                        metadata,
+                        parserClass,
+                        body,
+                        docId
+                );
+
+                // Pack TikaResponse into Any
+                com.google.protobuf.Any tikaAny = com.google.protobuf.Any.pack(tikaResponse);
+
+                // Create ParsedMetadata wrapper with tika parser info
+                String tikaVersion = MetadataUtils.getTikaVersion();
+                com.google.protobuf.Timestamp now = com.google.protobuf.Timestamp.newBuilder()
+                        .setSeconds(System.currentTimeMillis() / 1000)
+                        .setNanos((int) ((System.currentTimeMillis() % 1000) * 1000000))
+                        .build();
+
+                ParsedMetadata tikaMetadata = ParsedMetadata.newBuilder()
+                        .setParserName("tika")
+                        .setParserVersion(tikaVersion)
+                        .setParsedAt(now)
+                        .setData(tikaAny)
+                        .build();
+
+                // Store in parsed_metadata["tika"] instead of structured_data
+                docBuilder.putParsedMetadata("tika", tikaMetadata);
+
+                LOG.debugf("Stored comprehensive Tika metadata with %d fields in parsed_metadata",
+                          metadata.names().length);
+            } catch (Exception e) {
+                LOG.warnf(e, "Failed to extract comprehensive Tika metadata, skipping");
             }
         }
         

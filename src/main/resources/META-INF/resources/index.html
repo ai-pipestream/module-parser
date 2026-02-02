@@ -3,127 +3,917 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rokkon Parser Module</title>
+    <title>Pipestream Parser Module - Admin</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- JSONForms Dependencies -->
+    <link rel="stylesheet" href="https://unpkg.com/@jsonforms/vue-vanilla@3.7.0/vanilla.css">
+    <script src="https://unpkg.com/@jsonforms/core@3.7.0/dist/jsonforms-core.umd.js"></script>
+    <script src="https://unpkg.com/@jsonforms/vue@3.7.0/dist/jsonforms-vue.umd.js"></script>
+    <script src="https://unpkg.com/@jsonforms/vue-vanilla@3.7.0/dist/jsonforms-vue-vanilla.umd.js"></script>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            color: #2c3e50;
             line-height: 1.6;
-            color: #333;
-            max-width: 800px;
+        }
+        .container {
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
         }
-        h1 {
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        header p {
+            opacity: 0.9;
+            font-size: 1.05em;
+        }
+        .status-bar {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10b981;
+        }
+        .status-dot.offline {
+            background: #ef4444;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 12px 24px;
+            background: white;
+            border: none;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            font-weight: 500;
+        }
+        .tab:hover {
+            background: #f7fafc;
+        }
+        .tab.active {
+            background: #667eea;
+            color: white;
+        }
+        .tab-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            min-height: 500px;
+        }
+        .upload-area {
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            padding: 60px 40px;
+            text-align: center;
+            background: #f7fafc;
+            margin: 20px 0;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #edf2f7;
+        }
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #e6f0ff;
+            border-style: solid;
+        }
+        .upload-btn {
+            background: #667eea;
+            color: white;
+            padding: 12px 28px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .upload-btn:hover {
+            background: #5568d3;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95em;
+            transition: all 0.2s;
+            margin-right: 10px;
+            font-weight: 500;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+        .btn-primary:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: #e2e8f0;
             color: #2c3e50;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
+        }
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+        .result-area {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        .result-area pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            line-height: 1.6;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .success-box {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #065f46;
+        }
+        .error-box {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #991b1b;
+        }
+        .loading {
+            text-align: center;
+            padding: 60px 40px;
+            color: #64748b;
+        }
+        .spinner {
+            border: 3px solid #f1f5f9;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 0.8s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .form-actions {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 10px;
         }
         h2 {
-            color: #2980b9;
-            margin-top: 30px;
+            margin-bottom: 20px;
+            color: #1e293b;
+            font-size: 1.5em;
+            font-weight: 600;
         }
-        code {
-            background-color: #f8f8f8;
-            padding: 2px 5px;
-            border-radius: 3px;
-            font-family: 'Courier New', Courier, monospace;
+        h3 {
+            color: #475569;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            font-weight: 600;
         }
-        pre {
-            background-color: #f8f8f8;
+        .config-section {
+            margin-bottom: 30px;
+        }
+        .config-section h3 {
+            color: #667eea;
+        }
+        .example-card {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+        .example-card h3 {
+            color: #334155;
+            margin-bottom: 8px;
+        }
+        .example-card p {
+            color: #64748b;
+            margin-bottom: 15px;
+        }
+        .example-card pre {
+            background: #1e293b;
+            color: #e2e8f0;
             padding: 15px;
-            border-radius: 5px;
+            border-radius: 6px;
             overflow-x: auto;
+            font-size: 0.85em;
+            line-height: 1.5;
+            margin-bottom: 15px;
         }
-        .status {
-            padding: 10px;
-            border-radius: 5px;
-            margin: 20px 0;
+        .parser-results {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
         }
-        .status.running {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
+        .parser-box {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
         }
-        .status.error {
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
+        .parser-box h4 {
+            color: #1e293b;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .parser-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-tika {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .badge-docling {
+            background: #fce7f3;
+            color: #9f1239;
+        }
+        .metadata-summary {
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+        .metadata-summary h5 {
+            color: #475569;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        .metadata-summary p {
+            color: #64748b;
+            font-size: 0.9em;
+            margin: 5px 0;
+        }
+        .json-toggle {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #667eea;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        .json-toggle:hover {
+            color: #5568d3;
+        }
+        @media (max-width: 1024px) {
+            .parser-results {
+                grid-template-columns: 1fr;
+            }
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .file-selected {
+            background: #eff6ff;
+            border: 2px solid #667eea;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .file-selected h3 {
+            color: #1e40af;
+            margin-bottom: 8px;
+        }
+        .file-selected p {
+            color: #64748b;
+            margin-bottom: 15px;
         }
     </style>
 </head>
 <body>
-    <h1>Rokkon Parser Module</h1>
-    
-    <div id="status" class="status running">
-        <strong>Status:</strong> Module is running
+    <div id="app">
+        <div class="container">
+            <header>
+                <h1>Pipestream Parser Module</h1>
+                <p>Concurrent document parsing powered by Apache Tika + Docling - Extract text, metadata, and document structure</p>
+            </header>
+
+            <div class="status-bar">
+                <div class="status-indicator">
+                    <div class="status-dot" :class="{ offline: !isHealthy }"></div>
+                    <span><strong>Status:</strong> {{ healthStatus }}</span>
+                </div>
+                <div>
+                    <span style="color: #64748b;">{{ moduleInfo.displayName || 'Loading...' }}</span>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab" :class="{ active: currentTab === 'upload' }" @click="currentTab = 'upload'">
+                    Upload & Parse
+                </button>
+                <button class="tab" :class="{ active: currentTab === 'config' }" @click="currentTab = 'config'">
+                    Configuration Builder
+                </button>
+                <button class="tab" :class="{ active: currentTab === 'examples' }" @click="currentTab = 'examples'">
+                    Configuration Examples
+                </button>
+                <button class="tab" :class="{ active: currentTab === 'api' }" @click="currentTab = 'api'">
+                    API Info
+                </button>
+            </div>
+
+            <div class="tab-content">
+                <!-- Upload & Parse Tab -->
+                <div v-show="currentTab === 'upload'">
+                    <h2>Upload Document</h2>
+
+                    <div v-if="!selectedFile"
+                         class="upload-area"
+                         @dragover.prevent="dragover = true"
+                         @dragleave="dragover = false"
+                         @drop.prevent="handleDrop"
+                         @click="$refs.fileInput.click()"
+                         :class="{ dragover: dragover }">
+                        <div>
+                            <p style="font-size: 1.3em; margin-bottom: 15px; color: #475569;">Drag & drop a file here</p>
+                            <p style="margin-bottom: 20px; color: #64748b;">or</p>
+                            <button class="upload-btn" @click.stop="$refs.fileInput.click()">Choose File</button>
+                            <input type="file" ref="fileInput" @change="handleFileSelect">
+                            <p style="color: #94a3b8; margin-top: 20px; font-size: 0.9em;">
+                                Supported: PDF, Word, Excel, PowerPoint, HTML, Images, and more
+                            </p>
+                        </div>
+                    </div>
+
+                    <div v-else class="file-selected">
+                        <h3>{{ selectedFile.name }}</h3>
+                        <p>{{ formatFileSize(selectedFile.size) }}</p>
+                        <button class="btn btn-secondary" @click="clearFile">Clear</button>
+                    </div>
+
+                    <div class="form-actions">
+                        <button class="btn btn-primary" @click="parseFile" :disabled="!selectedFile || parsing">
+                            {{ parsing ? 'Parsing...' : 'Parse Document' }}
+                        </button>
+                        <button class="btn btn-secondary" @click="clearResults">Clear Results</button>
+                    </div>
+
+                    <div v-if="parsing" class="loading">
+                        <div class="spinner"></div>
+                        <p>Parsing document...</p>
+                    </div>
+
+                    <div v-if="parseResult" class="result-area">
+                        <h3>Parse Results</h3>
+                        <div v-if="parseResult.success" class="success-box">
+                            ✅ Document parsed successfully! Both Tika and Docling ran concurrently.
+                        </div>
+                        <div v-else-if="parseResult.error" class="error-box">
+                            {{ parseResult.error }}
+                        </div>
+
+                        <!-- Parser Results Side by Side -->
+                        <div v-if="parseResult.output_doc" class="parser-results">
+                            <!-- Tika Results -->
+                            <div class="parser-box">
+                                <h4>
+                                    <span class="parser-badge badge-tika">Tika Parser</span>
+                                </h4>
+                                <div v-if="getTikaMetadata(parseResult)" class="metadata-summary">
+                                    <h5>📄 Metadata Extracted</h5>
+                                    <p v-if="getTikaMetadata(parseResult).parser_name">
+                                        <strong>Parser:</strong> {{ getTikaMetadata(parseResult).parser_name }}
+                                        v{{ getTikaMetadata(parseResult).parser_version }}
+                                    </p>
+                                    <p><strong>Status:</strong> Present in parsed_metadata["tika"]</p>
+                                    <p><strong>Type:</strong> TikaResponse proto</p>
+                                </div>
+                                <div v-else class="error-box">
+                                    ❌ No Tika metadata found
+                                </div>
+                                <a class="json-toggle" @click="showTikaJson = !showTikaJson">
+                                    {{ showTikaJson ? '▼ Hide' : '▶ Show' }} Tika JSON
+                                </a>
+                                <pre v-show="showTikaJson">{{ JSON.stringify(getTikaMetadata(parseResult), null, 2) }}</pre>
+                            </div>
+
+                            <!-- Docling Results -->
+                            <div class="parser-box">
+                                <h4>
+                                    <span class="parser-badge badge-docling">Docling Parser</span>
+                                </h4>
+                                <div v-if="getDoclingMetadata(parseResult)" class="metadata-summary">
+                                    <h5>🔍 Document Structure Extracted</h5>
+                                    <p v-if="getDoclingMetadata(parseResult).parser_name">
+                                        <strong>Parser:</strong> {{ getDoclingMetadata(parseResult).parser_name }}
+                                        v{{ getDoclingMetadata(parseResult).parser_version }}
+                                    </p>
+                                    <p><strong>Status:</strong> Present in parsed_metadata["docling"]</p>
+                                    <p><strong>Type:</strong> DoclingResponse proto</p>
+                                    <p v-if="getDoclingData(parseResult) && getDoclingData(parseResult).status">
+                                        <strong>Parse Status:</strong> {{ getDoclingStatus(getDoclingData(parseResult).status) }}
+                                    </p>
+                                </div>
+                                <div v-else class="error-box">
+                                    ❌ No Docling metadata found (may not be enabled or failed gracefully)
+                                </div>
+                                <a class="json-toggle" @click="showDoclingJson = !showDoclingJson">
+                                    {{ showDoclingJson ? '▼ Hide' : '▶ Show' }} Docling JSON
+                                </a>
+                                <pre v-show="showDoclingJson">{{ JSON.stringify(getDoclingMetadata(parseResult), null, 2) }}</pre>
+                            </div>
+                        </div>
+
+                        <!-- Search Metadata -->
+                        <div v-if="parseResult.output_doc && parseResult.output_doc.search_metadata"
+                             style="margin-top: 20px;">
+                            <h3>📝 Search Metadata (from Tika)</h3>
+                            <div class="metadata-summary">
+                                <p><strong>Title:</strong> {{ parseResult.output_doc.search_metadata.title || 'N/A' }}</p>
+                                <p><strong>Body Length:</strong> {{ (parseResult.output_doc.search_metadata.body || '').length }} characters</p>
+                            </div>
+                            <a class="json-toggle" @click="showSearchMeta = !showSearchMeta">
+                                {{ showSearchMeta ? '▼ Hide' : '▶ Show' }} Full Search Metadata
+                            </a>
+                            <pre v-show="showSearchMeta">{{ JSON.stringify(parseResult.output_doc.search_metadata, null, 2) }}</pre>
+                        </div>
+
+                        <!-- Full Response -->
+                        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
+                            <a class="json-toggle" @click="showFullJson = !showFullJson">
+                                {{ showFullJson ? '▼ Hide' : '▶ Show' }} Full Response JSON
+                            </a>
+                            <pre v-show="showFullJson">{{ JSON.stringify(parseResult, null, 2) }}</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuration Builder Tab -->
+                <div v-show="currentTab === 'config'">
+                    <h2>Configuration Builder (JSONForms)</h2>
+
+                    <div class="info-box">
+                        <strong>🛠️ Interactive Configuration Builder</strong><br>
+                        Build your parser configuration using an auto-generated form based on the OpenAPI schema.
+                        Supports all 28 Docling options, parser selection (Tika/Docling/Both), and advanced settings.
+                    </div>
+
+                    <div v-if="loadingSchema" class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading configuration schema...</p>
+                    </div>
+
+                    <div v-else-if="schemaError" class="error-box">
+                        <strong>Failed to load schema</strong><br>
+                        {{ schemaError }}
+                    </div>
+
+                    <div v-else-if="configSchema" class="config-section">
+                        <!-- Parser Selection Quick Toggles -->
+                        <div class="parser-toggles" style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+                            <h3 style="margin-bottom: 15px;">⚡ Quick Settings</h3>
+                            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                    <input type="checkbox" v-model="configData.enableTika"
+                                           style="width: 18px; height: 18px; cursor: pointer;">
+                                    <span style="font-weight: 500;">Enable Apache Tika Parser</span>
+                                    <span class="parser-badge badge-tika" style="margin-left: 5px;">Default</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                    <input type="checkbox" v-model="configData.enableDocling"
+                                           style="width: 18px; height: 18px; cursor: pointer;">
+                                    <span style="font-weight: 500;">Enable Docling Parser</span>
+                                    <span class="parser-badge badge-docling" style="margin-left: 5px;">Advanced</span>
+                                </label>
+                            </div>
+                            <p style="margin-top: 10px; color: #64748b; font-size: 0.9em;">
+                                Enable both parsers to run them concurrently and get comprehensive metadata extraction.
+                            </p>
+                        </div>
+
+                        <!-- JSONForms Rendered Configuration -->
+                        <div class="jsonforms-container" style="margin-top: 20px;">
+                            <h3>📝 Full Configuration (JSONForms)</h3>
+                            <json-forms
+                                :schema="configSchema"
+                                :data="configData"
+                                :renderers="jsonFormsRenderers"
+                                @change="handleConfigChange"
+                            />
+                        </div>
+
+                        <!-- Configuration Actions -->
+                        <div class="form-actions" style="margin-top: 30px;">
+                            <button class="btn btn-primary" @click="testConfiguration">
+                                Test Configuration
+                            </button>
+                            <button class="btn btn-secondary" @click="copyConfigToClipboard">
+                                Copy JSON
+                            </button>
+                            <button class="btn btn-secondary" @click="resetConfiguration">
+                                Reset to Defaults
+                            </button>
+                        </div>
+
+                        <!-- Generated Configuration Preview -->
+                        <div style="margin-top: 30px;">
+                            <h3>📋 Generated Configuration</h3>
+                            <div class="result-area">
+                                <pre>{{ JSON.stringify(configData, null, 2) }}</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Examples Tab -->
+                <div v-show="currentTab === 'examples'">
+                    <h2>Configuration Examples</h2>
+
+                    <div v-if="loadingExamples" class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading examples...</p>
+                    </div>
+
+                    <div v-else-if="examples">
+                        <div class="info-box">
+                            <strong>Pre-built Configurations</strong><br>
+                            These are optimized configurations for common use cases. You can use these as templates for your parsing requests.
+                        </div>
+
+                        <div v-for="(config, name) in examples.examples" :key="name" class="example-card">
+                            <h3>{{ formatExampleName(name) }}</h3>
+                            <p>{{ getExampleDescription(name) }}</p>
+                            <pre>{{ JSON.stringify(config, null, 2) }}</pre>
+                            <button class="btn btn-secondary" @click="copyToClipboard(config)">Copy JSON</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API Info Tab -->
+                <div v-show="currentTab === 'api'">
+                    <h2>API Information</h2>
+
+                    <div class="info-box">
+                        <strong>REST API Endpoints</strong><br>
+                        The parser module exposes several REST endpoints for testing and integration.
+                    </div>
+
+                    <div class="config-section">
+                        <h3>Available Endpoints</h3>
+                        <div class="example-card">
+                            <h3>GET /modules/parser/api/parser/service/config</h3>
+                            <p>Get the JSON Schema for parser configuration</p>
+                        </div>
+
+                        <div class="example-card">
+                            <h3>POST /modules/parser/api/parser/service/parse-file</h3>
+                            <p>Parse an uploaded file with multipart/form-data</p>
+                        </div>
+
+                        <div class="example-card">
+                            <h3>POST /modules/parser/api/parser/service/parse-json</h3>
+                            <p>Parse with JSON payload including configuration</p>
+                        </div>
+
+                        <div class="example-card">
+                            <h3>GET /modules/parser/api/parser/service/info</h3>
+                            <p>Get module information and metadata</p>
+                        </div>
+
+                        <div class="example-card">
+                            <h3>GET /modules/parser/q/openapi</h3>
+                            <p>OpenAPI 3.1 specification for all endpoints</p>
+                        </div>
+                    </div>
+
+                    <div class="config-section">
+                        <h3>gRPC API</h3>
+                        <div class="info-box">
+                            The parser also provides a gRPC API implementing the PipeStepProcessor service.
+                            This is the primary interface for production use within the Pipestream platform.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    
-    <h2>Overview</h2>
-    <p>
-        The Parser Module is a document processing service that extracts text and metadata from various document formats.
-        It uses Apache Tika to parse documents and extract their content, making them available for further processing
-        in the Rokkon pipeline.
-    </p>
-    
-    <h2>Supported Document Types</h2>
-    <p>
-        The Parser Module supports a wide range of document formats, including:
-    </p>
-    <ul>
-        <li>PDF documents</li>
-        <li>Microsoft Office documents (Word, Excel, PowerPoint)</li>
-        <li>OpenDocument formats</li>
-        <li>HTML and XML</li>
-        <li>Plain text</li>
-        <li>Images with OCR (when configured)</li>
-        <li>And many more formats supported by Apache Tika</li>
-    </ul>
-    
-    <h2>API</h2>
-    <p>
-        The Parser Module implements the standard Rokkon <code>PipeStepProcessor</code> gRPC service interface.
-        It receives documents through gRPC and returns the parsed content and metadata.
-    </p>
-    
-    <h2>Configuration</h2>
-    <p>
-        The Parser Module can be configured with various options to control the parsing process:
-    </p>
-    <pre>
-{
-  "maxContentLength": 10000000,
-  "extractMetadata": true,
-  "enableTitleExtraction": true,
-  "disableEmfParser": false,
-  "enableGeoTopicParser": false,
-  "logParsingErrors": true
-}
-    </pre>
-    
+
     <script>
-        // Simple status check
-        function checkStatus() {
-            fetch('/q/health')
-                .then(response => {
-                    if (response.ok) {
-                        document.getElementById('status').className = 'status running';
-                        document.getElementById('status').innerHTML = '<strong>Status:</strong> Module is running';
-                    } else {
-                        document.getElementById('status').className = 'status error';
-                        document.getElementById('status').innerHTML = '<strong>Status:</strong> Module is experiencing issues';
+        const { createApp } = Vue;
+        const { JsonForms } = JSONFormsVue;
+        const { vanillaRenderers } = JSONFormsVueVanilla;
+
+        createApp({
+            components: {
+                JsonForms
+            },
+            data() {
+                return {
+                    currentTab: 'upload',
+                    isHealthy: false,
+                    healthStatus: 'Checking...',
+                    moduleInfo: {},
+                    selectedFile: null,
+                    dragover: false,
+                    parsing: false,
+                    parseResult: null,
+                    examples: null,
+                    loadingExamples: false,
+                    loadingSchema: false,
+                    schemaError: null,
+                    configSchema: null,
+                    configData: {
+                        config_id: 'custom-config',
+                        enableTika: true,
+                        enableDocling: false,
+                        parsingOptions: {
+                            maxContentLength: 10000000,
+                            extractMetadata: true
+                        }
+                    },
+                    jsonFormsRenderers: Object.freeze(vanillaRenderers),
+                    showTikaJson: false,
+                    showDoclingJson: false,
+                    showSearchMeta: false,
+                    showFullJson: false
+                };
+            },
+            mounted() {
+                this.checkHealth();
+                this.loadModuleInfo();
+                this.loadExamples();
+                this.loadConfigSchema();
+                setInterval(this.checkHealth, 30000);
+            },
+            methods: {
+                async checkHealth() {
+                    try {
+                        const response = await fetch('/modules/parser/q/health');
+                        this.isHealthy = response.ok;
+                        this.healthStatus = response.ok ? 'Running' : 'Issues detected';
+                    } catch (error) {
+                        this.isHealthy = false;
+                        this.healthStatus = 'Offline';
                     }
-                })
-                .catch(error => {
-                    document.getElementById('status').className = 'status error';
-                    document.getElementById('status').innerHTML = '<strong>Status:</strong> Unable to check module status';
-                });
-        }
-        
-        // Check status on page load
-        checkStatus();
-        
-        // Check status every 30 seconds
-        setInterval(checkStatus, 30000);
+                },
+                async loadModuleInfo() {
+                    try {
+                        const response = await fetch('/modules/parser/api/parser/service/info');
+                        this.moduleInfo = await response.json();
+                    } catch (error) {
+                        console.error('Failed to load module info:', error);
+                    }
+                },
+                async loadExamples() {
+                    this.loadingExamples = true;
+                    try {
+                        const response = await fetch('/modules/parser/api/parser/service/config/examples');
+                        this.examples = await response.json();
+                    } catch (error) {
+                        console.error('Failed to load examples:', error);
+                    } finally {
+                        this.loadingExamples = false;
+                    }
+                },
+                handleFileSelect(event) {
+                    this.selectedFile = event.target.files[0];
+                },
+                handleDrop(event) {
+                    this.dragover = false;
+                    const files = event.dataTransfer.files;
+                    if (files.length > 0) {
+                        this.selectedFile = files[0];
+                    }
+                },
+                clearFile() {
+                    this.selectedFile = null;
+                    this.$refs.fileInput.value = '';
+                },
+                async parseFile() {
+                    if (!this.selectedFile) return;
+
+                    this.parsing = true;
+                    this.parseResult = null;
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', this.selectedFile);
+                        formData.append('config', JSON.stringify({
+                            config_id: 'default',
+                            parsingOptions: {
+                                maxContentLength: 10000000,
+                                extractMetadata: true
+                            }
+                        }));
+
+                        const response = await fetch('/modules/parser/api/parser/service/parse-file', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        this.parseResult = await response.json();
+                    } catch (error) {
+                        this.parseResult = { error: error.message };
+                    } finally {
+                        this.parsing = false;
+                    }
+                },
+                clearResults() {
+                    this.parseResult = null;
+                },
+                formatFileSize(bytes) {
+                    if (bytes < 1024) return bytes + ' B';
+                    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+                    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+                },
+                formatExampleName(name) {
+                    return name.split('_').map(word =>
+                        word.charAt(0).toUpperCase() + word.slice(1)
+                    ).join(' ');
+                },
+                getExampleDescription(name) {
+                    const descriptions = {
+                        'default': 'Balanced settings for general document parsing',
+                        'large_documents': 'Optimized for processing large files with increased limits',
+                        'fast_processing': 'Speed-optimized with minimal metadata extraction',
+                        'batch_processing': 'Resilient configuration for batch operations',
+                        'strict_quality': 'Fail-fast validation with strict quality controls'
+                    };
+                    return descriptions[name] || 'Custom configuration example';
+                },
+                copyToClipboard(config) {
+                    navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+                    alert('Configuration copied to clipboard!');
+                },
+                getTikaMetadata(result) {
+                    return result?.output_doc?.parsed_metadata?.tika;
+                },
+                getDoclingMetadata(result) {
+                    return result?.output_doc?.parsed_metadata?.docling;
+                },
+                getDoclingData(result) {
+                    const metadata = this.getDoclingMetadata(result);
+                    if (!metadata?.data) return null;
+                    // The data field is an Any proto, try to decode it
+                    try {
+                        // In the actual response, the data will be the unpacked proto
+                        return metadata.data;
+                    } catch (e) {
+                        return metadata.data;
+                    }
+                },
+                getDoclingStatus(status) {
+                    const statusMap = {
+                        'STATUS_SUCCESS': '✅ Success',
+                        'STATUS_PARTIAL': '⚠️ Partial Success',
+                        'STATUS_FAILED': '❌ Failed',
+                        'STATUS_TIMEOUT': '⏱️ Timeout',
+                        'STATUS_UNSPECIFIED': '❓ Unknown'
+                    };
+                    return statusMap[status.status] || status.status || 'Unknown';
+                },
+                async loadConfigSchema() {
+                    this.loadingSchema = true;
+                    this.schemaError = null;
+                    try {
+                        const response = await fetch('/modules/parser/api/parser/service/config');
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        const schemaData = await response.json();
+
+                        // The response is the JSON Schema directly
+                        if (schemaData && schemaData.type === 'object') {
+                            this.configSchema = schemaData;
+                        } else {
+                            throw new Error('Invalid schema format received');
+                        }
+                    } catch (error) {
+                        console.error('Failed to load config schema:', error);
+                        this.schemaError = error.message;
+                    } finally {
+                        this.loadingSchema = false;
+                    }
+                },
+                handleConfigChange(event) {
+                    // JSONForms emits change events with the updated data
+                    if (event && event.data) {
+                        this.configData = event.data;
+                    }
+                },
+                resetConfiguration() {
+                    this.configData = {
+                        config_id: 'custom-config',
+                        enableTika: true,
+                        enableDocling: false,
+                        parsingOptions: {
+                            maxContentLength: 10000000,
+                            extractMetadata: true
+                        }
+                    };
+                },
+                copyConfigToClipboard() {
+                    navigator.clipboard.writeText(JSON.stringify(this.configData, null, 2));
+                    alert('Configuration copied to clipboard!');
+                },
+                async testConfiguration() {
+                    if (!this.selectedFile) {
+                        alert('Please select a file first in the "Upload & Parse" tab');
+                        this.currentTab = 'upload';
+                        return;
+                    }
+
+                    this.parsing = true;
+                    this.parseResult = null;
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', this.selectedFile);
+                        formData.append('config', JSON.stringify(this.configData));
+
+                        const response = await fetch('/modules/parser/api/parser/service/parse-file', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        this.parseResult = await response.json();
+                        this.currentTab = 'upload'; // Switch back to upload tab to see results
+                        alert('Configuration tested! Check the "Upload & Parse" tab for results.');
+                    } catch (error) {
+                        this.parseResult = { error: error.message };
+                        alert('Test failed: ' + error.message);
+                    } finally {
+                        this.parsing = false;
+                    }
+                }
+            }
+        }).mount('#app');
     </script>
 </body>
 </html>

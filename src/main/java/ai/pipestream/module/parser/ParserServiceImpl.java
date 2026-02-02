@@ -145,6 +145,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                             final String finalFilename = filename;
                             final String docId = request.getDocument().getDocId();
                             final String bodyText = parsedDoc.getSearchMetadata().getBody();
+                            final ParserConfig finalConfig = config;
 
                             if (shouldExtractComprehensiveMetadata(config)) {
                                 tikaUni = Uni.createFrom().item(() -> {
@@ -162,7 +163,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                                 doclingUni = Uni.createFrom().item(() -> {
                                     try {
                                         return doclingMetadataExtractor.extractComprehensiveMetadata(
-                                            contentBytes, finalFilename, docId);
+                                            contentBytes, finalFilename, docId, finalConfig.doclingOptions());
                                     } catch (Exception e) {
                                         LOG.warnf(e, "Docling extraction failed for document %s", docId);
                                         return null;
@@ -550,17 +551,16 @@ public class ParserServiceImpl implements PipeStepProcessorService {
      * Determines whether to build the comprehensive TikaResponse.
      */
     private boolean shouldExtractComprehensiveMetadata(ParserConfig config) {
-        // For now, follow the same flag as legacy metadata extraction
-        return true; // config typically defaults to extract metadata; keep always-on for service tests
+        // Check if Tika is enabled in config (default: true)
+        return config.enableTika() != null ? config.enableTika() : true;
     }
 
     /**
      * Determines whether to extract Docling metadata.
      */
     private boolean shouldExtractDoclingMetadata(ParserConfig config) {
-        // Disabled by default - Tika is the default parser
-        // TODO: Add config option to enable Docling when needed
-        return false;
+        // Check if Docling is enabled in config (default: false)
+        return config.enableDocling() != null ? config.enableDocling() : false;
     }
 
     /**

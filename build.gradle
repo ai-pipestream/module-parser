@@ -42,6 +42,8 @@ pipestreamProtos {
 }
 
 dependencies {
+    implementation 'io.quarkiverse.docling:quarkus-docling:999-SNAPSHOT'
+    implementation 'io.quarkus:quarkus-smallrye-openapi'
     // Import pipestream BOM to align all managed versions
     implementation platform("ai.pipestream:pipestream-bom:${pipestreamBomVersion}")
 

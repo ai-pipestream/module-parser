@@ -51,7 +51,7 @@ public class PdfGrpcIntegrationTest {
                                 if (search.hasBody() && !search.getBody().isEmpty()) {
                                     docsWithBody.incrementAndGet();
                                 }
-                                if (out.hasStructuredData()) {
+                                if (out.getParsedMetadataMap().containsKey("tika")) {
                                     docsWithStructured.incrementAndGet();
                                 }
                             } else {
@@ -100,9 +100,9 @@ public class PdfGrpcIntegrationTest {
         assertThat(response.hasOutputDoc(), is(true));
         PipeDoc out = response.getOutputDoc();
         // Body may be empty for some PDFs; don't require > 10 chars
-        assertThat("structured_data should exist", out.hasStructuredData(), is(true));
+        assertThat("structured_data should exist", out.getParsedMetadataMap().containsKey("tika"), is(true));
         // Unpack TikaResponse and assert typed PDF metadata presence
-        Any any = out.getStructuredData();
+        Any any = out.getParsedMetadataMap().get("tika").getData();
         if (any.is(TikaResponse.class)) {
             try {
                 TikaResponse tr = any.unpack(TikaResponse.class);

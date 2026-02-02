@@ -117,12 +117,31 @@ public record ParserConfig(
     @Valid
     OutlineExtractionOptions outlineExtraction,
 
+    @JsonProperty("doclingOptions")
+    @Schema(description = "Docling parsing options for advanced document analysis (1:1 mapping to DoclingParseConfig proto)")
+    @Valid
+    DoclingOptions doclingOptions,
+
+    @JsonProperty("enableTika")
+    @Schema(
+        description = "Enable Apache Tika parser for metadata extraction",
+        defaultValue = "true"
+    )
+    Boolean enableTika,
+
+    @JsonProperty("enableDocling")
+    @Schema(
+        description = "Enable Docling parser for advanced document analysis (PDFs, Office docs, etc.)",
+        defaultValue = "false"
+    )
+    Boolean enableDocling,
+
     @JsonProperty("strategy")
     @Schema(description = "Parsing strategy orchestration",
             example = "first-success",
             enumeration = {"first-success", "union"})
     String strategy
-    
+
 ) {
     
     /**
@@ -134,11 +153,14 @@ public record ParserConfig(
         @JsonProperty("advancedOptions") AdvancedOptions advancedOptions,
         @JsonProperty("contentTypeHandling") ContentTypeHandling contentTypeHandling,
         @JsonProperty("errorHandling") ErrorHandling errorHandling,
+        @JsonProperty("doclingOptions") DoclingOptions doclingOptions,
+        @JsonProperty("enableTika") Boolean enableTika,
+        @JsonProperty("enableDocling") Boolean enableDocling,
         @JsonProperty("config_id") @JsonAlias({"configId"}) String configId
     ) {
-        String finalConfigId = (configId != null && !configId.trim().isEmpty()) ? 
+        String finalConfigId = (configId != null && !configId.trim().isEmpty()) ?
             configId : generateConfigId(parsingOptions, advancedOptions, contentTypeHandling);
-        
+
         return new ParserConfig(
             finalConfigId,
             parsingOptions != null ? parsingOptions : ParsingOptions.defaultOptions(),
@@ -146,6 +168,9 @@ public record ParserConfig(
             contentTypeHandling != null ? contentTypeHandling : ContentTypeHandling.defaultOptions(),
             errorHandling != null ? errorHandling : ErrorHandling.defaultOptions(),
             OutlineExtractionOptions.defaultOptions(),
+            doclingOptions != null ? doclingOptions : DoclingOptions.defaultOptions(),
+            enableTika != null ? enableTika : true,   // Default: Tika enabled
+            enableDocling != null ? enableDocling : false,  // Default: Docling disabled
             "first-success"
         );
     }
@@ -198,6 +223,9 @@ public record ParserConfig(
             ContentTypeHandling.defaultOptions(),
             ErrorHandling.defaultOptions(),
             OutlineExtractionOptions.defaultOptions(),
+            DoclingOptions.defaultOptions(),
+            true,   // enableTika
+            false,  // enableDocling
             "first-success"
         );
     }
@@ -214,10 +242,13 @@ public record ParserConfig(
             ContentTypeHandling.defaultOptions(),
             ErrorHandling.resilientBatchProcessing(),
             OutlineExtractionOptions.defaultOptions(),
+            DoclingOptions.defaultOptions(),
+            true,   // enableTika
+            false,  // enableDocling
             "first-success"
         );
     }
-    
+
     /**
      * Creates a parser configuration optimized for fast processing.
      * Minimizes content extraction and uses streamlined options for speed.
@@ -230,10 +261,13 @@ public record ParserConfig(
             ContentTypeHandling.noTitleExtraction(),
             ErrorHandling.productionOptimized(),
             OutlineExtractionOptions.defaultOptions(),
+            DoclingOptions.fastProcessing(),
+            true,   // enableTika
+            false,  // enableDocling
             "first-success"
         );
     }
-    
+
     /**
      * Creates a parser configuration optimized for batch processing.
      * Emphasizes resilience and error recovery for large-scale operations.
@@ -246,10 +280,13 @@ public record ParserConfig(
             ContentTypeHandling.defaultOptions(),
             ErrorHandling.resilientBatchProcessing(),
             OutlineExtractionOptions.defaultOptions(),
+            DoclingOptions.defaultOptions(),
+            true,   // enableTika
+            false,  // enableDocling
             "first-success"
         );
     }
-    
+
     /**
      * Creates a parser configuration with strict quality control.
      * Fails fast on any parsing issues to ensure high data quality.
@@ -262,6 +299,47 @@ public record ParserConfig(
             ContentTypeHandling.defaultOptions(),
             ErrorHandling.strictQualityControl(),
             OutlineExtractionOptions.defaultOptions(),
+            DoclingOptions.defaultOptions(),
+            true,   // enableTika
+            false,  // enableDocling
+            "first-success"
+        );
+    }
+
+    /**
+     * Creates a parser configuration with both Tika and Docling enabled.
+     * Useful for comprehensive document analysis with multiple parser outputs.
+     */
+    public static ParserConfig comprehensiveAnalysis() {
+        return new ParserConfig(
+            "comprehensive-parser-" + UUID.randomUUID().toString().substring(0, 8),
+            ParsingOptions.defaultOptions(),
+            AdvancedOptions.defaultOptions(),
+            ContentTypeHandling.defaultOptions(),
+            ErrorHandling.defaultOptions(),
+            OutlineExtractionOptions.defaultOptions(),
+            DoclingOptions.allFormats(),  // Use comprehensive Docling options
+            true,   // enableTika
+            true,   // enableDocling (both enabled!)
+            "union"  // Union strategy to combine results
+        );
+    }
+
+    /**
+     * Creates a parser configuration with only Docling enabled (Tika disabled).
+     * Useful for modern document parsing with advanced features.
+     */
+    public static ParserConfig doclingOnly() {
+        return new ParserConfig(
+            "docling-only-" + UUID.randomUUID().toString().substring(0, 8),
+            ParsingOptions.defaultOptions(),
+            AdvancedOptions.defaultOptions(),
+            ContentTypeHandling.defaultOptions(),
+            ErrorHandling.defaultOptions(),
+            OutlineExtractionOptions.defaultOptions(),
+            DoclingOptions.allFormats(),
+            false,  // enableTika (disabled)
+            true,   // enableDocling
             "first-success"
         );
     }

@@ -101,6 +101,39 @@ public class ParserServiceEndpoint {
     }
 
     @GET
+    @Path("/config/jsonforms")
+    @Operation(summary = "Get parser configuration schema for JSONForms", description = "Retrieve the resolved ParserConfig JSON Schema (no $refs) for use with JSONForms/Vuetify UI")
+    @APIResponse(
+        responseCode = "200",
+        description = "Resolved JSON Schema for ParserConfig (1:1 with Tika + Docling options)",
+        content = @Content(
+            mediaType = MediaType.APPLICATION_JSON,
+            schema = @Schema(implementation = ParserConfig.class)
+        )
+    )
+    public Uni<Response> getConfigJsonForms() {
+        LOG.debug("Parser JSONForms schema request received");
+
+        return Uni.createFrom().item(() -> {
+            Optional<String> schemaOptional = schemaExtractorService.extractParserConfigSchemaResolvedForJsonForms();
+
+            if (schemaOptional.isPresent()) {
+                String schemaJson = schemaOptional.get();
+                LOG.debugf("Successfully returning ParserConfig JSONForms schema (%d characters)", schemaJson.length());
+
+                return Response.ok(schemaJson)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+            } else {
+                LOG.warn("Could not extract ParserConfig JSONForms schema from OpenAPI document");
+                return Response.status(Response.Status.SERVICE_UNAVAILABLE)
+                    .entity(Map.of("error", "Schema not available - check OpenAPI document generation"))
+                    .build();
+            }
+        });
+    }
+
+    @GET
     @Path("/ping")
     @Operation(summary = "Simple ping test", description = "Simple endpoint to test if REST is working")
     @APIResponse(responseCode = "200", description = "Ping successful")

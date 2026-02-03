@@ -68,6 +68,9 @@ dependencies {
     implementation 'ai.pipestream:pipestream-service-registration'
     implementation 'ai.pipestream:pipestream-server'
 
+    // Quinoa for frontend integration
+    implementation 'io.quarkiverse.quinoa:quarkus-quinoa:2.7.1'
+
     // Protobuf JSON utilities
     implementation 'com.google.protobuf:protobuf-java-util'
 

@@ -851,8 +851,27 @@ public class ParserServiceEndpoint {
                         metadataObj.put("parser_name", metadata.getParserName());
                         metadataObj.put("parser_version", metadata.getParserVersion());
                         metadataObj.put("parsed_at", metadata.getParsedAt().getSeconds());
-                        // Note: The actual proto data is in metadata.getData() as Any type
-                        // For now, just indicate that data is present
+                        
+                        // Use JsonFormat to print the Any content as JSON string
+                        try {
+                            com.google.protobuf.TypeRegistry typeRegistry = com.google.protobuf.TypeRegistry.newBuilder()
+                                .add(ai.pipestream.parsed.data.tika.v1.TikaResponse.getDescriptor())
+                                .add(ai.pipestream.parsed.data.docling.v1.DoclingResponse.getDescriptor())
+                                .build();
+                            
+                            com.google.protobuf.util.JsonFormat.Printer printer = com.google.protobuf.util.JsonFormat.printer()
+                                .usingTypeRegistry(typeRegistry);
+                                
+                            String dataJson = printer.print(metadata.getData());
+                            
+                            // Parse it back to Map/Object so it nests correctly in the JSON response
+                            Object dataObj = objectMapper.readValue(dataJson, Object.class);
+                            metadataObj.put("data", dataObj);
+                        } catch (Exception e) {
+                            LOG.warn("Failed to print Any data to JSON", e);
+                            metadataObj.put("data_error", e.getMessage());
+                        }
+
                         metadataObj.put("has_data", metadata.hasData());
                         metadataObj.put("data_type", metadata.getData().getTypeUrl());
                         parsedMetadataMap.put(key, metadataObj);

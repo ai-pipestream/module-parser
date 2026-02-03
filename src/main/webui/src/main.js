@@ -1,5 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
+import JsonViewer from 'vue3-json-viewer'
+import 'vue3-json-viewer/dist/vue3-json-viewer.css'
 
 // Vuetify
 import 'vuetify/styles'
@@ -23,4 +25,5 @@ const vuetify = createVuetify({
 
 const app = createApp(App)
 app.use(vuetify)
+app.use(JsonViewer)
 app.mount('#app')

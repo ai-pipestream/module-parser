@@ -28,10 +28,15 @@ import java.util.ArrayList;
 import org.jboss.resteasy.reactive.RestForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 import java.io.File;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import javax.print.Doc;
+
+import ai.pipestream.module.parser.util.SampleLoaderService;
 
 /**
  * REST API endpoints for parser service.
@@ -52,6 +57,9 @@ public class ParserServiceEndpoint {
 
     @Inject
     DocumentParser documentParser;
+    
+    @Inject
+    SampleLoaderService sampleLoaderService;
 
     @Inject
     ai.pipestream.module.parser.docling.DoclingMetadataExtractor doclingMetadataExtractor;
@@ -579,78 +587,23 @@ public class ParserServiceEndpoint {
 
     @GET
     @Path("/demo/documents")
-    @Operation(summary = "Get demo documents", description = "Retrieve available demo documents for parser testing")
+    @Operation(summary = "Get demo documents", description = "Retrieve available demo documents from files.csv")
     @APIResponse(responseCode = "200", description = "Demo documents retrieved successfully")
     public Uni<Response> getDemoDocuments() {
-        LOG.debug("Demo documents request received");
+        LOG.debug("Demo documents request received - reading from files.csv");
         
         return Uni.createFrom().item(() -> {
-            List<Map<String, Object>> documents = new ArrayList<>();
-            
-            // Sample document 1 - PDF
-            Map<String, Object> doc1 = new HashMap<>();
-            doc1.put("filename", "sample_contract.pdf");
-            doc1.put("title", "Software License Agreement");
-            doc1.put("description", "A typical software licensing contract with metadata");
-            doc1.put("file_size", 45621);
-            doc1.put("content_type", "application/pdf");
-            doc1.put("language", "English");
-            doc1.put("category", "Legal Document");
-            doc1.put("recommended_extract_metadata", true);
-            doc1.put("recommended_disable_emf", true);
-            doc1.put("recommended_content_handlers", "default");
-            doc1.put("preview", "SOFTWARE LICENSE AGREEMENT\\n\\nThis agreement is entered into between...");
-            documents.add(doc1);
-            
-            // Sample document 2 - Word
-            Map<String, Object> doc2 = new HashMap<>();
-            doc2.put("filename", "technical_report.docx");
-            doc2.put("title", "Annual Technical Report 2024");
-            doc2.put("description", "Corporate technical report with charts and embedded objects");
-            doc2.put("file_size", 127834);
-            doc2.put("content_type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-            doc2.put("language", "English");
-            doc2.put("category", "Technical Report");
-            doc2.put("recommended_extract_metadata", true);
-            doc2.put("recommended_disable_emf", true);
-            doc2.put("recommended_content_handlers", "default");
-            doc2.put("preview", "ANNUAL TECHNICAL REPORT 2024\\n\\nExecutive Summary\\nThis report summarizes...");
-            documents.add(doc2);
-            
-            // Sample document 3 - HTML
-            Map<String, Object> doc3 = new HashMap<>();
-            doc3.put("filename", "webpage_article.html");
-            doc3.put("title", "Modern Web Development Practices");
-            doc3.put("description", "HTML article with embedded CSS and JavaScript");
-            doc3.put("file_size", 23456);
-            doc3.put("content_type", "text/html");
-            doc3.put("language", "English");
-            doc3.put("category", "Web Content");
-            doc3.put("recommended_extract_metadata", true);
-            doc3.put("recommended_disable_emf", false);
-            doc3.put("recommended_content_handlers", "xml");
-            doc3.put("preview", "<!DOCTYPE html>\\n<html>\\n<head>\\n<title>Modern Web Development</title>...");
-            documents.add(doc3);
-            
-            // Sample document 4 - Plain text
-            Map<String, Object> doc4 = new HashMap<>();
-            doc4.put("filename", "readme.txt");
-            doc4.put("title", "Project Documentation");
-            doc4.put("description", "Simple plain text documentation file");
-            doc4.put("file_size", 3421);
-            doc4.put("content_type", "text/plain");
-            doc4.put("language", "English");
-            doc4.put("category", "Documentation");
-            doc4.put("recommended_extract_metadata", false);
-            doc4.put("recommended_disable_emf", false);
-            doc4.put("recommended_content_handlers", "text");
-            doc4.put("preview", "PROJECT README\\n\\nThis project demonstrates document parsing capabilities...");
-            documents.add(doc4);
+            List<Map<String, Object>> documents;
+            try {
+                documents = sampleLoaderService.loadDemoDocuments();
+            } catch (Exception e) {
+                return Response.serverError().entity(Map.of("error", e.getMessage())).build();
+            }
             
             Map<String, Object> response = new HashMap<>();
             response.put("documents", documents);
             response.put("total", documents.size());
-            response.put("description", "Demo documents for testing parser functionality");
+            response.put("description", "Demo documents indexed in files.csv");
             
             return Response.ok(response).build();
         });
@@ -898,6 +851,19 @@ public class ParserServiceEndpoint {
                     .build();
             }
         }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+    }
+
+    @POST
+    @Path("/test-process")
+    @Operation(summary = "Run as test process", description = "Execute parsing in test mode (Placeholder for Task 2)")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    public Uni<Response> testProcess(
+            @RestForm("file") FileUpload file,
+            @RestForm("config") String configJson) {
+        return Uni.createFrom().item(
+            Response.ok(Map.of("message", "Test process mode logic is not yet implemented (Task 2)", "status", "STUB"))
+                .build()
+        );
     }
 
     /**

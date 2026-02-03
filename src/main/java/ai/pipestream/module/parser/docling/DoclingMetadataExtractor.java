@@ -126,15 +126,13 @@ public class DoclingMetadataExtractor {
 
         // Input/Output Formats
         if (options.fromFormats() != null && !options.fromFormats().isEmpty()) {
-            options.fromFormats().forEach(format ->
-                builder.fromFormat(parseInputFormat(format)));
+            options.fromFormats().forEach(builder::fromFormat);
         }
         if (options.toFormats() != null && !options.toFormats().isEmpty()) {
-            options.toFormats().forEach(format ->
-                builder.toFormat(parseOutputFormat(format)));
+            options.toFormats().forEach(builder::toFormat);
         }
         if (options.imageExportMode() != null) {
-            builder.imageExportMode(parseImageRefMode(options.imageExportMode()));
+            builder.imageExportMode(options.imageExportMode());
         }
 
         // OCR Configuration
@@ -145,7 +143,7 @@ public class DoclingMetadataExtractor {
             builder.forceOcr(options.forceOcr());
         }
         if (options.ocrEngine() != null) {
-            builder.ocrEngine(parseOcrEngine(options.ocrEngine()));
+            builder.ocrEngine(options.ocrEngine());
         }
         if (options.ocrLang() != null && !options.ocrLang().isEmpty()) {
             options.ocrLang().forEach(builder::ocrLang);
@@ -153,12 +151,12 @@ public class DoclingMetadataExtractor {
 
         // PDF Processing
         if (options.pdfBackend() != null) {
-            builder.pdfBackend(parsePdfBackend(options.pdfBackend()));
+            builder.pdfBackend(options.pdfBackend());
         }
 
         // Table Extraction
         if (options.tableMode() != null) {
-            builder.tableMode(parseTableFormerMode(options.tableMode()));
+            builder.tableMode(options.tableMode());
         }
         if (options.tableCellMatching() != null) {
             builder.tableCellMatching(options.tableCellMatching());
@@ -169,7 +167,7 @@ public class DoclingMetadataExtractor {
 
         // Processing Control
         if (options.pipeline() != null) {
-            builder.pipeline(parseProcessingPipeline(options.pipeline()));
+            builder.pipeline(options.pipeline());
         }
         if (options.pageRange() != null && !options.pageRange().isEmpty()) {
             options.pageRange().forEach(builder::pageRange);
@@ -216,76 +214,6 @@ public class DoclingMetadataExtractor {
         // For now, we'll skip them until we need them (they require parsing JSON strings)
 
         return builder.build();
-    }
-
-    // ==================== Enum Parsers ====================
-
-    private InputFormat parseInputFormat(String format) {
-        try {
-            return InputFormat.valueOf(format.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            LOG.warnf("Unknown input format: %s, skipping", format);
-            return null;
-        }
-    }
-
-    private OutputFormat parseOutputFormat(String format) {
-        try {
-            return OutputFormat.valueOf(format.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            LOG.warnf("Unknown output format: %s, defaulting to JSON", format);
-            return OutputFormat.JSON;
-        }
-    }
-
-    private ImageRefMode parseImageRefMode(String mode) {
-        try {
-            return ImageRefMode.valueOf(mode.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            LOG.warnf("Unknown image ref mode: %s, defaulting to EMBEDDED", mode);
-            return ImageRefMode.EMBEDDED;
-        }
-    }
-
-    private OcrEngine parseOcrEngine(String engine) {
-        return switch (engine.toLowerCase()) {
-            case "easyocr" -> OcrEngine.EASYOCR;
-            case "mac", "ocrmac" -> OcrEngine.OCRMAC;
-            case "rapidocr" -> OcrEngine.RAPIDOCR;
-            case "tesserocr" -> OcrEngine.TESSEROCR;
-            case "tesseract" -> OcrEngine.TESSERACT;
-            default -> {
-                LOG.warnf("Unknown OCR engine: %s, defaulting to EASYOCR", engine);
-                yield OcrEngine.EASYOCR;
-            }
-        };
-    }
-
-    private PdfBackend parsePdfBackend(String backend) {
-        try {
-            return PdfBackend.valueOf(backend.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            LOG.warnf("Unknown PDF backend: %s, defaulting to DLPARSE_V4", backend);
-            return PdfBackend.DLPARSE_V4;
-        }
-    }
-
-    private TableFormerMode parseTableFormerMode(String mode) {
-        try {
-            return TableFormerMode.valueOf(mode.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            LOG.warnf("Unknown table mode: %s, defaulting to ACCURATE", mode);
-            return TableFormerMode.ACCURATE;
-        }
-    }
-
-    private ProcessingPipeline parseProcessingPipeline(String pipeline) {
-        try {
-            return ProcessingPipeline.valueOf(pipeline.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            LOG.warnf("Unknown processing pipeline: %s", pipeline);
-            return null;
-        }
     }
 
     // ==================== Response Mapping ====================

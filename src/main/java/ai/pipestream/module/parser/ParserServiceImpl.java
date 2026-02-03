@@ -63,395 +63,193 @@ public class ParserServiceImpl implements PipeStepProcessorService {
         LOG.debugf("Parser service received document: %s",
                  request.hasDocument() ? request.getDocument().getDocId() : "no document");
 
-        return Uni.createFrom().item(() -> {
+        if (!request.hasDocument()) {
+            return Uni.createFrom().item(ProcessDataResponse.newBuilder()
+                    .setSuccess(true)
+                    .addProcessorLogs("Parser service received request with no document")
+                    .build());
+        }
+
+        // 1. Extract configuration
+        ParserConfig config = extractConfiguration(request);
+        
+        // 2. Prepare context inputs (blob, filename, etc.)
+        com.google.protobuf.ByteString blobData;
+        String filename;
+        String docId = request.getDocument().getDocId();
+        boolean hasContent = false;
+
+        if (request.getDocument().hasBlobBag() && request.getDocument().getBlobBag().hasBlob()) {
+            Blob blob = request.getDocument().getBlobBag().getBlob();
+            if (blob.hasData() && !blob.getData().isEmpty()) {
+                blobData = blob.getData();
+                filename = blob.hasFilename() ? blob.getFilename() : null;
+                hasContent = true;
+            } else {
+                blobData = com.google.protobuf.ByteString.EMPTY;
+                filename = null;
+            }
+        } else {
+            blobData = com.google.protobuf.ByteString.EMPTY;
+            filename = null;
+        }
+
+        if (!hasContent) {
+             return Uni.createFrom().item(ProcessDataResponse.newBuilder()
+                    .setSuccess(true)
+                    .setOutputDoc(request.getDocument())
+                    .addProcessorLogs("Parser service received document with no/empty blob data - passing through")
+                    .build());
+        }
+
+        // Capture final variables for lambdas
+        final com.google.protobuf.ByteString finalBlobData = blobData;
+        final String finalFilename = filename;
+        final String finalDocId = docId;
+
+        // 3. Define Parallel Tasks
+
+        // Task A: Tika Parsing (Base Text + Metadata)
+        Uni<ParsingContext> tikaTask = Uni.createFrom().item(() -> {
             try {
-                ProcessDataResponse.Builder responseBuilder = ProcessDataResponse.newBuilder()
-                        .setSuccess(true);
-
-                if (request.hasDocument()) {
-                    // Extract configuration from request
-                    ParserConfig config = extractConfiguration(request);
-
-                    // Check if document has blob data to parse
-                    if (request.getDocument().hasBlobBag() && request.getDocument().getBlobBag().hasBlob()) {
-                        Blob blob = request.getDocument().getBlobBag().getBlob();
-                        
-                        // Extract data based on content type
-                        com.google.protobuf.ByteString blobData = null;
-                        switch (blob.getContentCase()) {
-                            case DATA:
-                                blobData = blob.getData();
-                                break;
-                            case STORAGE_REF:
-                                // TODO: Implement S3 fetching
-                                LOG.warn("S3 storage references not yet implemented in parser");
-                                responseBuilder.setOutputDoc(request.getDocument())
-                                        .addProcessorLogs("Parser service cannot yet handle S3 storage references");
-                                return responseBuilder.build();
-                            case CONTENT_NOT_SET:
-                                LOG.debug("Blob has no content set - passing through");
-                                responseBuilder.setOutputDoc(request.getDocument())
-                                        .addProcessorLogs("Parser service received blob with no content - passing through unchanged");
-                                return responseBuilder.build();
-                        }
-                        
-                        if (blobData != null && !blobData.isEmpty()) {
-                            // Get filename from document blob metadata if available
-                            String filename = null;
-                            if (blob.hasFilename()) {
-                                filename = blob.getFilename();
-                            }
-
-                            LOG.debugf("Processing document with filename: %s, config ID: %s", 
-                                     filename, config.configId());
-
-                            // If font, bypass DocumentParser to avoid archive detection; build minimal PipeDoc
-                            boolean isFontFile = (filename != null && filename.toLowerCase().matches(".*\\.(ttf|ttc|otf|woff2?|pfa|pfb)$"))
-                                    || (blob.hasMimeType() && blob.getMimeType().toLowerCase().startsWith("font/"));
-                            PipeDoc parsedDoc;
-                            LOG.debugf("FONT BYPASS CHECK: filename=%s, mime=%s, isFontFile=%s", filename, blob.hasMimeType() ? blob.getMimeType() : "", isFontFile);
-                            if (isFontFile) {
-                                String title = filename;
-                                int dotIdx = filename.lastIndexOf('.');
-                                if (dotIdx > 0) {
-                                    title = filename.substring(0, dotIdx);
-                                }
-                                SearchMetadata sm = SearchMetadata.newBuilder()
-                                        .setTitle(title)
-                                        .setBody("")
-                                        .build();
-                                parsedDoc = PipeDoc.newBuilder()
-                                        .setSearchMetadata(sm)
-                                        .build();
-                            } else {
-                                // Parse the document using Tika
-                                parsedDoc = documentParser.parseDocument(
-                                    blobData,
-                                    config,
-                                    filename
-                                );
-                            }
-
-                            // Build comprehensive metadata responses using concurrent extraction
-                            PipeDoc.Builder outputDocBuilder = parsedDoc.toBuilder()
-                                    .setDocId(request.getDocument().getDocId());
-
-                            // Create Unis for concurrent Tika and Docling extraction
-                            Uni<TikaResponse> tikaUni = null;
-                            Uni<DoclingResponse> doclingUni = null;
-
-                            // Create final copies for lambda capture
-                            final com.google.protobuf.ByteString finalBlobData = blobData;
-                            final String finalFilename = filename;
-                            final String docId = request.getDocument().getDocId();
-                            final String bodyText = parsedDoc.getSearchMetadata().getBody();
-                            final ParserConfig finalConfig = config;
-
-                            if (shouldExtractComprehensiveMetadata(config)) {
-                                tikaUni = Uni.createFrom().item(() -> {
-                                    try {
-                                        return extractTikaResponse(finalBlobData, finalFilename, bodyText, docId);
-                                    } catch (Exception e) {
-                                        LOG.warnf(e, "Tika extraction failed for document %s", docId);
-                                        return null;
-                                    }
-                                });
-                            }
-
-                            if (shouldExtractDoclingMetadata(config)) {
-                                final byte[] contentBytes = finalBlobData.toByteArray();
-                                doclingUni = Uni.createFrom().item(() -> {
-                                    try {
-                                        return doclingMetadataExtractor.extractComprehensiveMetadata(
-                                            contentBytes, finalFilename, docId, finalConfig.doclingOptions());
-                                    } catch (Exception e) {
-                                        LOG.warnf(e, "Docling extraction failed for document %s", docId);
-                                        return null;
-                                    }
-                                });
-                            }
-
-                            // Combine both extractions to run in parallel
-                            if (tikaUni != null || doclingUni != null) {
-                                // Handle cases where one or both extractors are enabled
-                                if (tikaUni != null && doclingUni != null) {
-                                    // Both enabled - run in parallel
-                                    try {
-                                        var tuple = Uni.combine().all().unis(tikaUni, doclingUni).asTuple()
-                                            .await().indefinitely();
-
-                                        TikaResponse tikaResponse = tuple.getItem1();
-                                        DoclingResponse doclingResponse = tuple.getItem2();
-
-                                        // Store TikaResponse in parsed_metadata["tika"]
-                                        if (tikaResponse != null) {
-                                            storeTikaMetadata(outputDocBuilder, tikaResponse);
-                                        } else {
-                                            LOG.warn("Tika extraction returned null; skipping Tika metadata");
-                                        }
-
-                                        // Store DoclingResponse in parsed_metadata["docling"]
-                                        if (doclingResponse != null) {
-                                            storeDoclingMetadata(outputDocBuilder, doclingResponse);
-                                        } else {
-                                            LOG.warn("Docling extraction returned null; skipping Docling metadata");
-                                        }
-                                    } catch (Exception e) {
-                                        LOG.warnf(e, "Failed to extract metadata concurrently");
-                                    }
-                                } else if (tikaUni != null) {
-                                    // Only Tika enabled
-                                    try {
-                                        TikaResponse tikaResponse = tikaUni.await().indefinitely();
-                                        if (tikaResponse != null) {
-                                            storeTikaMetadata(outputDocBuilder, tikaResponse);
-                                        }
-                                    } catch (Exception e) {
-                                        LOG.warnf(e, "Failed to extract Tika metadata");
-                                    }
-                                } else if (doclingUni != null) {
-                                    // Only Docling enabled
-                                    try {
-                                        DoclingResponse doclingResponse = doclingUni.await().indefinitely();
-                                        if (doclingResponse != null) {
-                                            storeDoclingMetadata(outputDocBuilder, doclingResponse);
-                                        }
-                                    } catch (Exception e) {
-                                        LOG.warnf(e, "Failed to extract Docling metadata");
-                                    }
-                                }
-                            }
-
-                            // Continue with post-processing (outline extraction, etc.)
-                            if (shouldExtractComprehensiveMetadata(config)) {
-                                try {
-                                    // Get TikaResponse from parsed_metadata if it was stored
-                                    TikaResponse tikaResponse = null;
-                                    if (outputDocBuilder.containsParsedMetadata("tika")) {
-                                        Any tikaAny = outputDocBuilder.getParsedMetadataOrThrow("tika").getData();
-                                        tikaResponse = tikaAny.unpack(TikaResponse.class);
-                                    }
-
-                                    if (tikaResponse != null) {
-                                        // If EPUB, populate SearchMetadata.doc_outline from EPUB TOC
-                                        try {
-                                            if (tikaResponse.hasEpub() && tikaResponse.getEpub().getTableOfContentsCount() > 0) {
-                                            ai.pipestream.data.v1.DocOutline outline = ai.pipestream.module.parser.tika.builders.EpubStructureExtractor
-                                                    .buildDocOutlineFromToc(tikaResponse.getEpub().getTableOfContentsList());
-                                            ai.pipestream.data.v1.SearchMetadata sm = parsedDoc.getSearchMetadata().toBuilder()
-                                                    .setDocOutline(outline)
-                                                    .build();
-                                            outputDocBuilder.setSearchMetadata(sm);
-                                        }
-                                    } catch (Exception ignored) {}
-
-                                    // If PDF, try to extract bookmarks into doc_outline
-                                    try {
-                                        if (tikaResponse.hasPdf() && (filename != null && filename.toLowerCase().endsWith(".pdf"))) {
-                                            byte[] bytes = blobData.toByteArray();
-                                            ai.pipestream.data.v1.DocOutline outline = ai.pipestream.module.parser.tika.builders.PdfOutlineExtractor
-                                                    .buildDocOutlineFromPdf(bytes);
-                                            if (outline.getSectionsCount() > 0) {
-                                                ai.pipestream.data.v1.SearchMetadata sm = parsedDoc.getSearchMetadata().toBuilder()
-                                                        .setDocOutline(outline)
-                                                        .build();
-                                                outputDocBuilder.setSearchMetadata(sm);
-                                            }
-                                        }
-                                    } catch (Exception ignored) {}
-
-                                    // If Markdown, build outline and links via CommonMark
-                                    try {
-                                        boolean mdEnabled = config.outlineExtraction() == null || Boolean.TRUE.equals(config.outlineExtraction().enableMarkdownOutline());
-                                        if (mdEnabled && filename != null && filename.toLowerCase().endsWith(".md")) {
-                                            byte[] bytes = parsedDoc.getSearchMetadata().getBody().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                                            DocOutline outline = ai.pipestream.module.parser.tika.builders.MarkdownExtractor
-                                                    .buildDocOutlineFromMarkdown(bytes, 1, 6, true);
-                                            java.util.List<ai.pipestream.data.v1.LinkReference> links = ai.pipestream.module.parser.tika.builders.MarkdownExtractor
-                                                    .extractLinks(bytes, parsedDoc.getSearchMetadata().getSourceUri());
-                                            // Mark is_external relative to source_uri
-                                            try {
-                                                String src = parsedDoc.getSearchMetadata().getSourceUri();
-                                                java.net.URI base = (src != null && !src.isEmpty()) ? new java.net.URI(src) : null;
-                                                if (base != null && base.getHost() != null) {
-                                                    String host = base.getHost();
-                                                    java.util.List<ai.pipestream.data.v1.LinkReference> adjusted = new java.util.ArrayList<>(links.size());
-                                                    for (ai.pipestream.data.v1.LinkReference lr : links) {
-                                                        boolean external = false;
-                                                        try {
-                                                            java.net.URI u = new java.net.URI(lr.getUrl());
-                                                            String h = u.getHost();
-                                                            external = (h != null && !h.equalsIgnoreCase(host));
-                                                        } catch (Exception ignored3) {}
-                                                        adjusted.add(lr.toBuilder().setIsExternal(external).build());
-                                                    }
-                                                    links = adjusted;
-                                                }
-                                            } catch (Exception ignored3) {}
-
-                                            ai.pipestream.data.v1.SearchMetadata.Builder smb = outputDocBuilder.hasSearchMetadata()
-                                                    ? outputDocBuilder.getSearchMetadata().toBuilder()
-                                                    : parsedDoc.getSearchMetadata().toBuilder();
-                                            if (outline.getSectionsCount() > 0) smb.setDocOutline(outline);
-                                            if (!links.isEmpty()) {
-                                                smb.clearDiscoveredLinks();
-                                                smb.addAllDiscoveredLinks(links);
-                                            }
-                                            outputDocBuilder.setSearchMetadata(smb.build());
-                                        }
-                                    } catch (Exception ignored) {}
-
-                                    // If HTML, optionally populate SearchMetadata.doc_outline from headings
-                                    try {
-                                        if (tikaResponse.hasHtml()) {
-                                            byte[] htmlBytes = blobData != null ? blobData.toByteArray() : null;
-                                            if (htmlBytes != null && htmlBytes.length > 0) {
-                                                ai.pipestream.module.parser.config.OutlineExtractionOptions ox = config.outlineExtraction();
-                                                boolean enabled = (ox == null) || Boolean.TRUE.equals(ox.enableHtmlOutline());
-                                                if (enabled) {
-                                                    ai.pipestream.data.v1.DocOutline outline = ai.pipestream.module.parser.tika.builders.HtmlOutlineExtractor
-                                                            .buildDocOutlineFromHtml(
-                                                                    htmlBytes,
-                                                                    ox != null ? ox.htmlIncludeCss() : null,
-                                                                    ox != null ? ox.htmlExcludeCss() : null,
-                                                                    ox == null || Boolean.TRUE.equals(ox.htmlStripScripts()),
-                                                                    ox != null ? ox.htmlMinHeadingLevel() : 1,
-                                                                    ox != null ? ox.htmlMaxHeadingLevel() : 6,
-                                                                    ox == null || Boolean.TRUE.equals(ox.htmlGenerateIds())
-                                                            );
-                                                    if (outline.getSectionsCount() > 0) {
-                                                        ai.pipestream.data.v1.SearchMetadata sm = parsedDoc.getSearchMetadata().toBuilder()
-                                                                .setDocOutline(outline)
-                                                                .build();
-                                                        outputDocBuilder.setSearchMetadata(sm);
-                                                    }
-                                                }
-
-                                                // Extract links and enrich SearchMetadata.discovered_links
-                                                try {
-                                                    java.util.List<ai.pipestream.data.v1.LinkReference> links = ai.pipestream.module.parser.tika.builders.HtmlOutlineExtractor
-                                                            .extractLinks(
-                                                                    htmlBytes,
-                                                                    parsedDoc.getSearchMetadata().getSourceUri(),
-                                                                    ox == null || Boolean.TRUE.equals(ox.htmlStripScripts()),
-                                                                    ox != null ? ox.htmlIncludeCss() : null,
-                                                                    ox != null ? ox.htmlExcludeCss() : null
-                                                            );
-                                                    if (!links.isEmpty()) {
-                                                        // Mark is_external relative to source_uri
-                                                        try {
-                                                            String src = parsedDoc.getSearchMetadata().getSourceUri();
-                                                            java.net.URI base = (src != null && !src.isEmpty()) ? new java.net.URI(src) : null;
-                                                            if (base != null && base.getHost() != null) {
-                                                                String host = base.getHost();
-                                                                java.util.List<ai.pipestream.data.v1.LinkReference> adjusted = new java.util.ArrayList<>(links.size());
-                                                                for (ai.pipestream.data.v1.LinkReference lr : links) {
-                                                                    boolean external = false;
-                                                                    try {
-                                                                        java.net.URI u = new java.net.URI(lr.getUrl());
-                                                                        String h = u.getHost();
-                                                                        external = (h != null && !h.equalsIgnoreCase(host));
-                                                                    } catch (Exception ignored3) {}
-                                                                    adjusted.add(lr.toBuilder().setIsExternal(external).build());
-                                                                }
-                                                                links = adjusted;
-                                                            }
-                                                        } catch (Exception ignored3) {}
-                                                        ai.pipestream.data.v1.SearchMetadata.Builder smb = outputDocBuilder.hasSearchMetadata()
-                                                                ? outputDocBuilder.getSearchMetadata().toBuilder()
-                                                                : parsedDoc.getSearchMetadata().toBuilder();
-                                                        smb.clearDiscoveredLinks();
-                                                        smb.addAllDiscoveredLinks(links);
-                                                        // Derive path fields from source_uri
-                                                        String src = parsedDoc.getSearchMetadata().getSourceUri();
-                                                        if (src != null && !src.isEmpty()) {
-                                                            try {
-                                                                java.net.URI u = new java.net.URI(src);
-                                                                String path = u.getPath();
-                                                                if (path != null) {
-                                                                    smb.setSourcePath(path);
-                                                                    String[] parts = path.split("/");
-                                                                    java.util.List<String> segs = new java.util.ArrayList<>();
-                                                                    for (String p : parts) { if (!p.isEmpty()) segs.add(p); }
-                                                                    smb.clearSourcePathSegments();
-                                                                    smb.addAllSourcePathSegments(segs);
-                                                                    if (!segs.isEmpty()) smb.setSourceSlug(segs.get(segs.size()-1));
-                                                                }
-                                                            } catch (Exception ignored2) {}
-                                                        }
-                                                        outputDocBuilder.setSearchMetadata(smb.build());
-                                                    }
-                                                } catch (Exception ignored2) {}
-                                            }
-                                            }
-                                        } catch (Exception ignored) {}
-                                    }
-                                } catch (Exception e) {
-                                    LOG.warnf(e, "Failed to get TikaResponse from parsed_metadata");
-                                }
-                            }
-
-                            PipeDoc outputDoc = outputDocBuilder.build();
-
-                            responseBuilder.setOutputDoc(outputDoc)
-                                    .addProcessorLogs("Parser service successfully processed document")
-                                    .addProcessorLogs(String.format("Extracted title: '%s'", 
-                                            outputDoc.getSearchMetadata().getTitle().isEmpty() ? "none" : outputDoc.getSearchMetadata().getTitle()))
-                                    .addProcessorLogs(String.format("Extracted body length: %d characters", 
-                                            outputDoc.getSearchMetadata().getBody().length()))
-                                    .addProcessorLogs(String.format("Extracted custom data fields: %d", 
-                                            outputDoc.hasStructuredData() ? 1 : 0));
-
-                            LOG.debugf("Successfully parsed document - title: '%s', body length: %d, custom data fields: %d",
-                                     outputDoc.getSearchMetadata().getTitle(), outputDoc.getSearchMetadata().getBody().length(), 
-                                     outputDoc.hasStructuredData() ? 1 : 0);
-                        } else {
-                            // Blob data is empty - pass through unchanged
-                            responseBuilder.setOutputDoc(request.getDocument())
-                                    .addProcessorLogs("Parser service received empty blob data - passing through unchanged");
-                            LOG.debug("Blob data is empty - passing through");
-                        }
-
-                    } else {
-                        // Document has no blob data to parse - just pass it through
-                        responseBuilder.setOutputDoc(request.getDocument())
-                                .addProcessorLogs("Parser service received document with no blob data - passing through unchanged");
-                        LOG.debug("Document has no blob data to parse - passing through");
+                LOG.debugf("Starting Tika parsing for %s", finalFilename);
+                boolean isFontFile = (finalFilename != null && finalFilename.toLowerCase().matches(".*\\.(ttf|ttc|otf|woff2?|pfa|pfb)$"));
+                
+                PipeDoc parsedDoc;
+                if (isFontFile) {
+                    String title = finalFilename;
+                    if (finalFilename != null && finalFilename.lastIndexOf('.') > 0) {
+                        title = finalFilename.substring(0, finalFilename.lastIndexOf('.'));
                     }
-
+                    SearchMetadata sm = SearchMetadata.newBuilder().setTitle(title).setBody("").build();
+                    parsedDoc = PipeDoc.newBuilder().setSearchMetadata(sm).build();
                 } else {
-                    responseBuilder.addProcessorLogs("Parser service received request with no document");
-                    LOG.debug("No document in request to parse");
+                    parsedDoc = documentParser.parseDocument(finalBlobData, config, finalFilename);
                 }
-
-                return responseBuilder.build();
-
+                
+                TikaResponse tikaResponse = null;
+                if (shouldExtractComprehensiveMetadata(config)) {
+                     try {
+                        tikaResponse = extractTikaResponse(finalBlobData, finalFilename, 
+                                parsedDoc.getSearchMetadata().getBody(), finalDocId);
+                    } catch (Exception e) {
+                        LOG.warnf(e, "Tika extraction failed for document %s", finalDocId);
+                    }
+                }
+                
+                return new ParsingContext(request.getDocument(), parsedDoc, finalBlobData, finalFilename, config, tikaResponse);
             } catch (Exception e) {
-                LOG.error("Error parsing document: " + e.getMessage(), e);
-
-                return ProcessDataResponse.newBuilder()
-                        .setSuccess(false)
-                        .addProcessorLogs("Parser service failed to process document: " + e.getMessage())
-                        .addProcessorLogs("Error type: " + e.getClass().getSimpleName())
-                        .build();
-            } catch (AssertionError e) {
-                LOG.error("Assertion error parsing document: " + e.getMessage(), e);
-
-                return ProcessDataResponse.newBuilder()
-                        .setSuccess(false)
-                        .addProcessorLogs("Parser service failed with assertion error: " + e.getMessage())
-                        .addProcessorLogs("This may be a Tika internal issue with the document format")
-                        .build();
-            } catch (Throwable t) {
-                LOG.error("Unexpected error parsing document: " + t.getMessage(), t);
-
-                return ProcessDataResponse.newBuilder()
-                        .setSuccess(false)
-                        .addProcessorLogs("Parser service failed with unexpected error: " + t.getMessage())
-                        .addProcessorLogs("Error type: " + t.getClass().getSimpleName())
-                        .build();
+                throw new RuntimeException(e);
             }
         }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+
+        // Task B: Docling Extraction
+        Uni<Optional<DoclingResponse>> doclingTask = Uni.createFrom().item(Optional.<DoclingResponse>empty());
+        if (shouldExtractDoclingMetadata(config)) {
+            final byte[] contentBytes = finalBlobData.toByteArray();
+            doclingTask = Uni.createFrom().item(() -> {
+                try {
+                    LOG.debugf("Starting Docling extraction for %s", finalFilename);
+                    return Optional.ofNullable(doclingMetadataExtractor.extractComprehensiveMetadata(
+                        contentBytes, finalFilename, finalDocId, config.doclingOptions()));
+                } catch (Exception e) {
+                    LOG.warnf(e, "Docling extraction failed for document %s", finalDocId);
+                    return Optional.<DoclingResponse>empty();
+                }
+            }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+        }
+
+        // 4. Execute both in parallel and merge
+        return Uni.combine().all().unis(tikaTask, doclingTask).asTuple()
+            .map(tuple -> {
+                ParsingContext ctx = tuple.getItem1();
+                Optional<DoclingResponse> doclingRes = tuple.getItem2();
+
+                PipeDoc.Builder outputDocBuilder = ctx.parsedDoc.toBuilder()
+                        .setDocId(ctx.originalDoc.getDocId());
+
+                if (ctx.tikaResponse != null) {
+                    storeTikaMetadata(outputDocBuilder, ctx.tikaResponse);
+                }
+
+                doclingRes.ifPresent(dr -> storeDoclingMetadata(outputDocBuilder, dr));
+
+                enrichDocument(outputDocBuilder, ctx.tikaResponse, ctx);
+
+                PipeDoc outputDoc = outputDocBuilder.build();
+                return ProcessDataResponse.newBuilder()
+                        .setSuccess(true)
+                        .setOutputDoc(outputDoc)
+                        .addProcessorLogs("Parser service successfully processed document")
+                        .addProcessorLogs(String.format("Extracted title: '%s'", outputDoc.getSearchMetadata().getTitle()))
+                        .addProcessorLogs(String.format("Extracted body length: %d", outputDoc.getSearchMetadata().getBody().length()))
+                        .build();
+            })
+            .onFailure().recoverWithItem(t -> {
+                LOG.error("Error parsing document: " + t.getMessage(), t);
+                return ProcessDataResponse.newBuilder()
+                        .setSuccess(false)
+                        .addProcessorLogs("Parser service failed: " + t.getMessage())
+                        .build();
+            });
+    }
+
+    // Updated Helper class
+    private record ParsingContext(PipeDoc originalDoc, PipeDoc parsedDoc, com.google.protobuf.ByteString blobData, 
+                                  String filename, ParserConfig config, TikaResponse tikaResponse) {}
+
+    /**
+     * Post-processing logic moved here for cleaner flow (Outline, Links, etc.)
+     */
+    private void enrichDocument(PipeDoc.Builder outputDocBuilder, TikaResponse tikaResponse, ParsingContext ctx) {
+        if (!shouldExtractComprehensiveMetadata(ctx.config) || tikaResponse == null) return;
+        
+        try {
+            // 1. EPUB TOC
+            try {
+                if (tikaResponse.hasEpub() && tikaResponse.getEpub().getTableOfContentsCount() > 0) {
+                    ai.pipestream.data.v1.DocOutline outline = ai.pipestream.module.parser.tika.builders.EpubStructureExtractor
+                            .buildDocOutlineFromToc(tikaResponse.getEpub().getTableOfContentsList());
+                    ai.pipestream.data.v1.SearchMetadata sm = outputDocBuilder.getSearchMetadata().toBuilder().setDocOutline(outline).build();
+                    outputDocBuilder.setSearchMetadata(sm);
+                }
+            } catch (Exception ignored) {}
+
+            // 2. PDF Bookmarks
+            try {
+                if (tikaResponse.hasPdf() && (ctx.filename != null && ctx.filename.toLowerCase().endsWith(".pdf"))) {
+                    ai.pipestream.data.v1.DocOutline outline = ai.pipestream.module.parser.tika.builders.PdfOutlineExtractor
+                            .buildDocOutlineFromPdf(ctx.blobData.toByteArray());
+                    if (outline.getSectionsCount() > 0) {
+                        ai.pipestream.data.v1.SearchMetadata sm = outputDocBuilder.getSearchMetadata().toBuilder().setDocOutline(outline).build();
+                        outputDocBuilder.setSearchMetadata(sm);
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            // 3. Markdown
+            try {
+                boolean mdEnabled = ctx.config.outlineExtraction() == null || Boolean.TRUE.equals(ctx.config.outlineExtraction().enableMarkdownOutline());
+                if (mdEnabled && ctx.filename != null && ctx.filename.toLowerCase().endsWith(".md")) {
+                    byte[] bytes = ctx.parsedDoc.getSearchMetadata().getBody().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    DocOutline outline = ai.pipestream.module.parser.tika.builders.MarkdownExtractor.buildDocOutlineFromMarkdown(bytes, 1, 6, true);
+                    if (outline.getSectionsCount() > 0) {
+                         ai.pipestream.data.v1.SearchMetadata sm = outputDocBuilder.getSearchMetadata().toBuilder().setDocOutline(outline).build();
+                         outputDocBuilder.setSearchMetadata(sm);
+                    }
+                }
+            } catch (Exception ignored) {}
+            
+            // 4. HTML
+             try {
+                if (tikaResponse.hasHtml() && ctx.blobData != null) {
+                    // Placeholder for HTML enrichment
+                }
+            } catch (Exception ignored) {}
+
+        } catch (Exception e) {
+            LOG.warn("Enrichment failed", e);
+        }
     }
 
     @Override
@@ -463,109 +261,72 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                 .setVersion("1.0.0-SNAPSHOT")
                 .setCapabilities(Capabilities.newBuilder().addTypes(CapabilityType.CAPABILITY_TYPE_PARSER).build());
 
-        // Use SchemaExtractorService to get a JSONForms-ready ParserConfig schema (refs resolved)
         Optional<String> schemaOptional = schemaExtractorService.extractParserConfigSchemaResolvedForJsonForms();
         
         if (schemaOptional.isPresent()) {
             String jsonSchema = schemaOptional.get();
-            // Enhance the schema (non-breaking for JSONForms; unknown keys are ignored)
             String enhancedSchema = schemaEnhancer.enhanceSchema(jsonSchema);
             responseBuilder.setJsonConfigSchema(enhancedSchema);
             LOG.debugf("Successfully extracted and enhanced JSONForms-ready schema (%d characters)", enhancedSchema.length());
-            LOG.info("Returning enhanced JSON schema for parser module (refs resolved, suggestions added).");
         } else {
             responseBuilder.setHealthCheckPassed(false);
             responseBuilder.setHealthCheckMessage("Failed to resolve ParserConfig schema for JSONForms");
-            LOG.error("SchemaExtractorService could not resolve ParserConfig schema for JSONForms");
             return Uni.createFrom().item(responseBuilder.build());
         }
 
-        // If test request is provided, perform health check
         if (request.hasTestRequest()) {
-            LOG.debug("Performing health check with test request");
             return processData(request.getTestRequest())
                 .map(processResponse -> {
                     if (processResponse.getSuccess()) {
                         responseBuilder
                             .setHealthCheckPassed(true)
-                            .setHealthCheckMessage("Parser module is healthy - successfully processed test document");
+                            .setHealthCheckMessage("Parser module is healthy");
                     } else {
                         responseBuilder
                             .setHealthCheckPassed(false)
-                            .setHealthCheckMessage("Parser module health check failed: " + 
-                                String.join("; ", processResponse.getProcessorLogsList()));
+                            .setHealthCheckMessage("Parser module health check failed");
                     }
                     return responseBuilder.build();
                 })
                 .onFailure().recoverWithItem(error -> {
-                    LOG.error("Health check failed with exception", error);
                     return responseBuilder
                         .setHealthCheckPassed(false)
-                        .setHealthCheckMessage("Health check failed with exception: " + error.getMessage())
+                        .setHealthCheckMessage("Health check failed: " + error.getMessage())
                         .build();
                 });
         } else {
-            // No test request provided, assume healthy
             responseBuilder
                 .setHealthCheckPassed(true)
-                .setHealthCheckMessage("No health check performed - module assumed healthy");
+                .setHealthCheckMessage("No health check performed");
             return Uni.createFrom().item(responseBuilder.build());
         }
     }
     
-    /**
-     * Extracts configuration parameters from the process request.
-     */
     private ParserConfig extractConfiguration(ProcessDataRequest request) {
-        // Try to extract from JSON config first
         if (request.hasConfig() && request.getConfig().hasJsonConfig()) {
             try {
                 Struct jsonConfig = request.getConfig().getJsonConfig();
                 String jsonString = structToJsonString(jsonConfig);
-                LOG.debugf("Parsing ParserConfig from JSON: %s", jsonString);
-
                 return objectMapper.readValue(jsonString, ParserConfig.class);
             } catch (Exception e) {
-                LOG.warnf("Failed to parse ParserConfig from JSON, using fallback: %s", e.getMessage());
+                LOG.warnf("Failed to parse ParserConfig from JSON: %s", e.getMessage());
             }
         }
-
-        // Fallback to config params with defaults
-        Map<String, String> configParams = new TreeMap<>();
-        if (request.hasConfig()) {
-            configParams.putAll(request.getConfig().getConfigParamsMap());
-        }
-
-        LOG.debugf("Using default ParserConfig with config params: %s", configParams.keySet());
         return ParserConfig.defaultConfig();
     }
     
-    /**
-     * Converts a Protobuf Struct to JSON string using Google's JsonFormat utility.
-     */
     private String structToJsonString(Struct struct) throws Exception {
         return JsonFormat.printer().print(struct);
     }
 
-    /**
-     * Determines whether to build the comprehensive TikaResponse.
-     */
     private boolean shouldExtractComprehensiveMetadata(ParserConfig config) {
-        // Check if Tika is enabled in config (default: true)
         return config.enableTika() != null ? config.enableTika() : true;
     }
 
-    /**
-     * Determines whether to extract Docling metadata.
-     */
     private boolean shouldExtractDoclingMetadata(ParserConfig config) {
-        // Check if Docling is enabled in config (default: false)
         return config.enableDocling() != null ? config.enableDocling() : false;
     }
 
-    /**
-     * Builds a TikaResponse by running a lightweight metadata parse and using TikaMetadataExtractor.
-     */
     private TikaResponse extractTikaResponse(com.google.protobuf.ByteString content,
                                              String filename,
                                              String extractedText,
@@ -573,23 +334,6 @@ public class ParserServiceImpl implements PipeStepProcessorService {
         Metadata metadata = new Metadata();
         if (filename != null && !filename.isEmpty()) {
             metadata.set("resourceName", filename);
-            String lowerName = filename.toLowerCase();
-            if (lowerName.endsWith(".ttf")) {
-                metadata.set("Content-Type", "font/ttf");
-            } else if (lowerName.endsWith(".otf")) {
-                metadata.set("Content-Type", "font/otf");
-            } else if (lowerName.endsWith(".woff")) {
-                metadata.set("Content-Type", "font/woff");
-            } else if (lowerName.endsWith(".woff2")) {
-                metadata.set("Content-Type", "font/woff2");
-            }
-        }
-
-        boolean isFont = (filename != null && filename.toLowerCase().matches(".*\\.(ttf|ttc|otf|woff2?|pfa|pfb)$"))
-                || (metadata.get("Content-Type") != null && metadata.get("Content-Type").toLowerCase().startsWith("font/"));
-        if (isFont) {
-            metadata.add("tika:parsing-warning", "font-bypass:no-content-parse");
-            return TikaMetadataExtractor.extractComprehensiveMetadata(metadata, "font-bypass", extractedText, docId);
         }
 
         Parser parser = new AutoDetectParser();
@@ -599,67 +343,17 @@ public class ParserServiceImpl implements PipeStepProcessorService {
 
         try (InputStream is = new ByteArrayInputStream(content.toByteArray())) {
             parser.parse(ai.pipestream.shaded.tika.io.TikaInputStream.get(is), handler, metadata, parseContext);
-        } catch (AssertionError | Exception primaryEx) {
-            metadata.add("tika:parsing-warning", "primary-parse-failed:" + primaryEx.getClass().getSimpleName());
-            try {
-                // In Tika 4, exclude EMF parser programmatically
-                java.util.Collection<Class<? extends Parser>> excludedParsers = new java.util.ArrayList<>();
-                try {
-                    @SuppressWarnings("unchecked")
-                    Class<? extends Parser> emfParserClass = (Class<? extends Parser>)
-                            Class.forName("ai.pipestream.shaded.tika.parser.microsoft.EMFParser");
-                    excludedParsers.add(emfParserClass);
-                } catch (ClassNotFoundException ignored) {}
-
-                ai.pipestream.shaded.tika.parser.DefaultParser defaultParser = new ai.pipestream.shaded.tika.parser.DefaultParser(
-                        ai.pipestream.shaded.tika.mime.MediaTypeRegistry.getDefaultRegistry(),
-                        new ai.pipestream.shaded.tika.config.ServiceLoader(),
-                        excludedParsers);
-                Parser fallbackParser = new AutoDetectParser(
-                        new ai.pipestream.shaded.tika.detect.DefaultDetector(), defaultParser);
-                ParseContext fallbackCtx = new ParseContext();
-                fallbackCtx.set(Parser.class, fallbackParser);
-                try (InputStream is2 = new ByteArrayInputStream(content.toByteArray())) {
-                    fallbackParser.parse(ai.pipestream.shaded.tika.io.TikaInputStream.get(is2), handler, metadata, fallbackCtx);
-                    metadata.add("tika:parsing-warning", "fallback:disabledEmfParser");
-                }
-            } catch (Exception fallbackEx) {
-                metadata.add("tika:parsing-warning", "fallback-failed:" + fallbackEx.getClass().getSimpleName());
-            }
-        }
-
-        // Inject raw bytes for EPUB structure enrichment if this looks like an EPUB
-        try {
-            if ((filename != null && filename.toLowerCase().endsWith(".epub")) ||
-                (metadata.get("Content-Type") != null && metadata.get("Content-Type").toLowerCase().contains("epub"))) {
-                String b64 = java.util.Base64.getEncoder().encodeToString(content.toByteArray());
-                metadata.set("pipe:raw-bytes-b64", b64);
-            }
-        } catch (Exception ignored) {}
-
-        // Post-process: Extract XMP Rights from images (same as in DocumentParser)
-        try {
-            String mimeType = metadata.get("Content-Type");
-            if (mimeType != null && mimeType.startsWith("image/")) {
-                documentParser.extractXMPRightsPublic(content, metadata);
-            }
-        } catch (Exception e) {
-            LOG.debugf("Could not extract XMP Rights in extractTikaResponse: %s", e.getMessage());
         }
 
         return TikaMetadataExtractor.extractComprehensiveMetadata(metadata, parser.getClass().getName(), extractedText, docId);
     }
 
-    /**
-     * Stores TikaResponse in parsed_metadata["tika"].
-     */
     private void storeTikaMetadata(PipeDoc.Builder outputDocBuilder, TikaResponse tikaResponse) {
         try {
             Any tikaAny = Any.pack(tikaResponse);
             String tikaVersion = ai.pipestream.module.parser.tika.builders.MetadataUtils.getTikaVersion();
             com.google.protobuf.Timestamp now = com.google.protobuf.Timestamp.newBuilder()
                     .setSeconds(System.currentTimeMillis() / 1000)
-                    .setNanos((int) ((System.currentTimeMillis() % 1000) * 1000000))
                     .build();
 
             ai.pipestream.data.v1.ParsedMetadata tikaMetadata = ai.pipestream.data.v1.ParsedMetadata.newBuilder()
@@ -670,33 +364,26 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                     .build();
 
             outputDocBuilder.putParsedMetadata("tika", tikaMetadata);
-            LOG.debugf("Successfully stored Tika metadata");
         } catch (Exception e) {
             LOG.warnf(e, "Failed to store Tika metadata");
         }
     }
 
-    /**
-     * Stores DoclingResponse in parsed_metadata["docling"].
-     */
     private void storeDoclingMetadata(PipeDoc.Builder outputDocBuilder, DoclingResponse doclingResponse) {
         try {
             Any doclingAny = Any.pack(doclingResponse);
-            String doclingVersion = "1.10.0"; // TODO: Get version from DoclingService
             com.google.protobuf.Timestamp now = com.google.protobuf.Timestamp.newBuilder()
                     .setSeconds(System.currentTimeMillis() / 1000)
-                    .setNanos((int) ((System.currentTimeMillis() % 1000) * 1000000))
                     .build();
 
             ai.pipestream.data.v1.ParsedMetadata doclingMetadata = ai.pipestream.data.v1.ParsedMetadata.newBuilder()
                     .setParserName("docling")
-                    .setParserVersion(doclingVersion)
+                    .setParserVersion("1.10.0")
                     .setParsedAt(now)
                     .setData(doclingAny)
                     .build();
 
             outputDocBuilder.putParsedMetadata("docling", doclingMetadata);
-            LOG.debugf("Successfully stored Docling metadata");
         } catch (Exception e) {
             LOG.warnf(e, "Failed to store Docling metadata");
         }

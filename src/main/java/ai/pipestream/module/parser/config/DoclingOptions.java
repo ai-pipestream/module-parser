@@ -1,5 +1,6 @@
 package ai.pipestream.module.parser.config;
 
+import ai.docling.serve.api.convert.request.options.*;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -14,7 +15,10 @@ import java.util.List;
  *
  * DO NOT add extra fields - keep it synchronized with ConvertDocumentOptions.
  */
-@RegisterForReflection
+@RegisterForReflection(targets = {
+    InputFormat.class, OutputFormat.class, ImageRefMode.class, OcrEngine.class, 
+    PdfBackend.class, TableFormerMode.class, ProcessingPipeline.class
+})
 @Schema(
     name = "DoclingOptions",
     description = "Complete Docling document parsing configuration - 1:1 mapping to ConvertDocumentOptions"
@@ -25,25 +29,24 @@ public record DoclingOptions(
 
     @JsonProperty("from_formats")
     @Schema(
-        description = "Input format(s) to convert from. Allowed: docx, pptx, html, image, pdf, asciidoc, md, csv, xlsx, xml_uspto, xml_jats, mets_gbs, json_docling, audio, vtt",
+        description = "Input format(s) to convert from.",
         examples = {"[\"pdf\", \"docx\"]", "[\"image\"]"}
     )
-    List<String> fromFormats,
+    List<InputFormat> fromFormats,
 
     @JsonProperty("to_formats")
     @Schema(
-        description = "Output format(s) to convert to. Allowed: md, json, html, html_split_page, text, doctags",
+        description = "Output format(s) to convert to.",
         examples = {"[\"json\", \"md\"]", "[\"html\"]"}
     )
-    List<String> toFormats,
+    List<OutputFormat> toFormats,
 
     @JsonProperty("image_export_mode")
     @Schema(
         description = "Image export mode. Allowed: placeholder, embedded, referenced",
-        defaultValue = "embedded",
-        enumeration = {"placeholder", "embedded", "referenced"}
+        defaultValue = "embedded"
     )
-    String imageExportMode,
+    ImageRefMode imageExportMode,
 
     // ==================== OCR Configuration ====================
 
@@ -64,10 +67,9 @@ public record DoclingOptions(
     @JsonProperty("ocr_engine")
     @Schema(
         description = "OCR engine to use. Allowed: auto, easyocr, ocrmac, rapidocr, tesserocr, tesseract",
-        defaultValue = "easyocr",
-        enumeration = {"auto", "easyocr", "ocrmac", "rapidocr", "tesserocr", "tesseract"}
+        defaultValue = "rapidocr"
     )
-    String ocrEngine,
+    OcrEngine ocrEngine,
 
     @JsonProperty("ocr_lang")
     @Schema(
@@ -81,20 +83,18 @@ public record DoclingOptions(
     @JsonProperty("pdf_backend")
     @Schema(
         description = "PDF backend to use. Allowed: pypdfium2, dlparse_v1, dlparse_v2, dlparse_v4",
-        defaultValue = "dlparse_v4",
-        enumeration = {"pypdfium2", "dlparse_v1", "dlparse_v2", "dlparse_v4"}
+        defaultValue = "dlparse_v4"
     )
-    String pdfBackend,
+    PdfBackend pdfBackend,
 
     // ==================== Table Extraction ====================
 
     @JsonProperty("table_mode")
     @Schema(
         description = "Table structure mode. Allowed: fast, accurate",
-        defaultValue = "accurate",
-        enumeration = {"fast", "accurate"}
+        defaultValue = "accurate"
     )
-    String tableMode,
+    TableFormerMode tableMode,
 
     @JsonProperty("table_cell_matching")
     @Schema(
@@ -115,7 +115,7 @@ public record DoclingOptions(
     @Schema(
         description = "Processing pipeline for PDF or image files"
     )
-    String pipeline,
+    ProcessingPipeline pipeline,
 
     @JsonProperty("page_range")
     @Schema(
@@ -240,14 +240,14 @@ public record DoclingOptions(
     public static DoclingOptions defaultOptions() {
         return new DoclingOptions(
             null,                   // from_formats (all formats)
-            List.of("json"),        // to_formats (json for structured data)
-            "embedded",             // image_export_mode
+            List.of(OutputFormat.JSON),        // to_formats (json for structured data)
+            ImageRefMode.EMBEDDED,             // image_export_mode
             true,                   // do_ocr
             false,                  // force_ocr
-            "easyocr",              // ocr_engine
+            OcrEngine.RAPIDOCR,             // ocr_engine
             List.of(),              // ocr_lang (empty, engine chooses)
-            "dlparse_v4",           // pdf_backend
-            "accurate",             // table_mode
+            PdfBackend.DLPARSE_V4,           // pdf_backend
+            TableFormerMode.ACCURATE,             // table_mode
             null,                   // table_cell_matching
             true,                   // do_table_structure
             null,                   // pipeline
@@ -276,14 +276,14 @@ public record DoclingOptions(
     public static DoclingOptions allFormats() {
         return new DoclingOptions(
             null,
-            List.of("json", "md", "html", "text"),
-            "embedded",
+            List.of(OutputFormat.JSON, OutputFormat.MARKDOWN, OutputFormat.HTML, OutputFormat.TEXT),
+            ImageRefMode.EMBEDDED,
             true,
             false,
-            "easyocr",
+            OcrEngine.RAPIDOCR,
             List.of(),
-            "dlparse_v4",
-            "accurate",
+            PdfBackend.DLPARSE_V4,
+            TableFormerMode.ACCURATE,
             null,
             true,
             null,
@@ -312,14 +312,14 @@ public record DoclingOptions(
     public static DoclingOptions fastProcessing() {
         return new DoclingOptions(
             null,
-            List.of("json", "md"),
-            "placeholder",          // Faster image mode
+            List.of(OutputFormat.JSON, OutputFormat.MARKDOWN),
+            ImageRefMode.PLACEHOLDER,          // Faster image mode
             false,                  // Disable OCR
             false,
-            "easyocr",
+            OcrEngine.RAPIDOCR,
             List.of(),
-            "dlparse_v4",
-            "fast",                 // Fast table mode
+            PdfBackend.DLPARSE_V4,
+            TableFormerMode.FAST,                 // Fast table mode
             null,
             true,
             null,

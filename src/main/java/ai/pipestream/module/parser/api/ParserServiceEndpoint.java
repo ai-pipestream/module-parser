@@ -855,13 +855,13 @@ public class ParserServiceEndpoint {
 
     @POST
     @Path("/test-process")
-    @Operation(summary = "Run as test process", description = "Execute parsing in test mode (Placeholder for Task 2)")
+    @Operation(summary = "Run as test process", description = "Execute parsing in test mode (Placeholder)")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     public Uni<Response> testProcess(
             @RestForm("file") FileUpload file,
             @RestForm("config") String configJson) {
         return Uni.createFrom().item(
-            Response.ok(Map.of("message", "Test process mode logic is not yet implemented (Task 2)", "status", "STUB"))
+            Response.ok(Map.of("message", "Test process mode logic disabled until test suite is fixed.", "status", "STUB"))
                 .build()
         );
     }

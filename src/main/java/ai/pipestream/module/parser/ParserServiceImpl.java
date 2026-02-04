@@ -98,7 +98,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
              return Uni.createFrom().item(ProcessDataResponse.newBuilder()
                     .setSuccess(true)
                     .setOutputDoc(request.getDocument())
-                    .addProcessorLogs("Parser service received document with no/empty blob data - passing through")
+                    .addProcessorLogs("Parser service received document with no blob data - passing through unchanged")
                     .build());
         }
 
@@ -176,22 +176,23 @@ public class ParserServiceImpl implements PipeStepProcessorService {
 
                 enrichDocument(outputDocBuilder, ctx.tikaResponse, ctx);
 
-                PipeDoc outputDoc = outputDocBuilder.build();
-                return ProcessDataResponse.newBuilder()
-                        .setSuccess(true)
-                        .setOutputDoc(outputDoc)
-                        .addProcessorLogs("Parser service successfully processed document")
-                        .addProcessorLogs(String.format("Extracted title: '%s'", outputDoc.getSearchMetadata().getTitle()))
-                        .addProcessorLogs(String.format("Extracted body length: %d", outputDoc.getSearchMetadata().getBody().length()))
-                        .build();
-            })
-            .onFailure().recoverWithItem(t -> {
-                LOG.error("Error parsing document: " + t.getMessage(), t);
-                return ProcessDataResponse.newBuilder()
-                        .setSuccess(false)
-                        .addProcessorLogs("Parser service failed: " + t.getMessage())
-                        .build();
-            });
+                    PipeDoc outputDoc = outputDocBuilder.build();
+                    return ProcessDataResponse.newBuilder()
+                            .setSuccess(true)
+                            .setOutputDoc(outputDoc)
+                            .addProcessorLogs("Parser service successfully processed document")
+                            .addProcessorLogs(String.format("Extracted title: '%s'", outputDoc.getSearchMetadata().getTitle()))
+                            .addProcessorLogs(String.format("Extracted body length: %d", outputDoc.getSearchMetadata().getBody().length()))
+                            .addProcessorLogs(String.format("Extracted custom data fields: %d", outputDoc.hasStructuredData() ? 1 : 0))
+                            .build();
+                })
+        .onFailure().recoverWithItem(t -> {
+            LOG.error("Error parsing document: " + t.getMessage(), t);
+            return ProcessDataResponse.newBuilder()
+                    .setSuccess(false)
+                    .addProcessorLogs("Parser service failed: " + t.getMessage())
+                    .build();
+        });
     }
 
     // Updated Helper class
@@ -242,10 +243,67 @@ public class ParserServiceImpl implements PipeStepProcessorService {
             
             // 4. HTML
              try {
-                if (tikaResponse.hasHtml() && ctx.blobData != null) {
-                    // Placeholder for HTML enrichment
+                if (tikaResponse.hasHtml()) {
+                    ai.pipestream.parsed.data.html.v1.HtmlMetadata html = tikaResponse.getHtml();
+                    ai.pipestream.data.v1.SearchMetadata.Builder smBuilder = outputDocBuilder.getSearchMetadata().toBuilder();
+                    boolean added = false;
+
+                    // A. Extract Semantic Links from Metadata (HEAD)
+                    if (html.hasCanonicalUrl()) {
+                        smBuilder.addDiscoveredLinks(ai.pipestream.data.v1.LinkReference.newBuilder()
+                                .setUrl(html.getCanonicalUrl()).setRel("canonical").build());
+                        added = true;
+                    }
+                    if (html.hasAlternateUrl()) {
+                        smBuilder.addDiscoveredLinks(ai.pipestream.data.v1.LinkReference.newBuilder()
+                                .setUrl(html.getAlternateUrl()).setRel("alternate").build());
+                        added = true;
+                    }
+                    if (html.hasStylesheetUrl()) {
+                        smBuilder.addDiscoveredLinks(ai.pipestream.data.v1.LinkReference.newBuilder()
+                                .setUrl(html.getStylesheetUrl()).setRel("stylesheet").build());
+                        added = true;
+                    }
+                    if (html.hasRssUrl()) {
+                        smBuilder.addDiscoveredLinks(ai.pipestream.data.v1.LinkReference.newBuilder()
+                                .setUrl(html.getRssUrl()).setRel("rss").build());
+                        added = true;
+                    }
+                    if (html.hasAtomUrl()) {
+                        smBuilder.addDiscoveredLinks(ai.pipestream.data.v1.LinkReference.newBuilder()
+                                .setUrl(html.getAtomUrl()).setRel("atom").build());
+                        added = true;
+                    }
+                    
+                    // Also populate basic metadata from HTML specific fields
+                    if (html.hasTitle() && smBuilder.getTitle().isEmpty()) {
+                        smBuilder.setTitle(html.getTitle());
+                        added = true;
+                    }
+
+                    // B. Extract Body Links via Jsoup (BODY)
+                    if (ctx.blobData != null) {
+                        java.util.List<ai.pipestream.data.v1.LinkReference> bodyLinks = 
+                            ai.pipestream.module.parser.tika.builders.HtmlOutlineExtractor.extractLinks(
+                                ctx.blobData.toByteArray(), 
+                                "", 
+                                true, 
+                                null, 
+                                null
+                            );
+                        if (!bodyLinks.isEmpty()) {
+                            smBuilder.addAllDiscoveredLinks(bodyLinks);
+                            added = true;
+                        }
+                    }
+                    
+                    if (added) {
+                        outputDocBuilder.setSearchMetadata(smBuilder.build());
+                    }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+                LOG.warn("HTML enrichment failed", ignored);
+            }
 
         } catch (Exception e) {
             LOG.warn("Enrichment failed", e);
@@ -343,6 +401,16 @@ public class ParserServiceImpl implements PipeStepProcessorService {
 
         try (InputStream is = new ByteArrayInputStream(content.toByteArray())) {
             parser.parse(ai.pipestream.shaded.tika.io.TikaInputStream.get(is), handler, metadata, parseContext);
+        }
+
+        // Enrich with XMP Rights for images (critical for CC tests)
+        String mimeType = metadata.get(Metadata.CONTENT_TYPE);
+        if (mimeType != null && mimeType.startsWith("image/")) {
+            try {
+                documentParser.extractXMPRightsPublic(content, metadata);
+            } catch (Exception e) {
+                LOG.warn("Failed to extract XMP rights in Tika response generation", e);
+            }
         }
 
         return TikaMetadataExtractor.extractComprehensiveMetadata(metadata, parser.getClass().getName(), extractedText, docId);

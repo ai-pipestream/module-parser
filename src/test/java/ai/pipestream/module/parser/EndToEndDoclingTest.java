@@ -26,7 +26,7 @@ public class EndToEndDoclingTest {
             .formParam("text", "Hello World. This is a test document for Docling and Tika.")
             .formParam("extractMetadata", "true")
         .when()
-            .post("/modules/parser/api/parser/service/simple-form")
+            .post("/api/parser/service/simple-form")
         .then()
             .statusCode(200)
             .body("success", is(true))
@@ -57,7 +57,7 @@ public class EndToEndDoclingTest {
             .multiPart("file", tempFile)
             .multiPart("config", "{}") // Empty JSON config
         .when()
-            .post("/modules/parser/api/parser/service/parse-file")
+            .post("/api/parser/service/parse-file")
         .then()
             .statusCode(200)
             .body("success", is(true))

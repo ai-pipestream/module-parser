@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parser Admin - JSONForms</title>
+
+    <!-- React from CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- JSONForms from CDN -->
+    <script src="https://unpkg.com/@jsonforms/core@3.3.0/dist/jsonforms-core.umd.js"></script>
+    <script src="https://unpkg.com/@jsonforms/react@3.3.0/dist/jsonforms-react.umd.js"></script>
+    <script src="https://unpkg.com/@jsonforms/vanilla-renderers@3.3.0/dist/jsonforms-react-vanilla.umd.js"></script>
+
+    <!-- JSONForms Vanilla CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/@jsonforms/vanilla-renderers@3.3.0/lib/vanilla.css">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h2 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        .file-upload {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            background: #f7fafc;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            max-height: 400px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Parser Admin - JSONForms Test</h1>
+            <p>Testing ParserConfig schema rendering with JSONForms</p>
+        </header>
+
+        <div id="root"></div>
+    </div>
+
+    <script>
+        const { useState, useEffect } = React;
+        const { JsonForms } = window.JSONFormsReact || window;
+        const { vanillaRenderers, vanillaCells } = window.JSONFormsVanillaRenderers || window;
+
+        // Debug: log what's available
+        console.log('Available globals:', Object.keys(window).filter(k => k.includes('JSON')));
+
+        function App() {
+            const [schema, setSchema] = useState(null);
+            const [config, setConfig] = useState({});
+            const [selectedFile, setSelectedFile] = useState(null);
+            const [parsing, setParsing] = useState(false);
+            const [result, setResult] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                // Fetch schema from backend
+                fetch('/modules/parser/api/parser/service/config/jsonforms')
+                    .then(res => res.json())
+                    .then(data => {
+                        setSchema(data);
+                        setLoading(false);
+                    })
+                    .catch(err => {
+                        console.error('Failed to load schema:', err);
+                        setLoading(false);
+                    });
+            }, []);
+
+            const handleParse = async () => {
+                if (!selectedFile) return;
+
+                setParsing(true);
+                setResult(null);
+
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                formData.append('config', JSON.stringify(config));
+
+                try {
+                    const response = await fetch('/modules/parser/api/parser/service/parse-file', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+                    setResult(data);
+                } catch (error) {
+                    setResult({ error: error.message });
+                } finally {
+                    setParsing(false);
+                }
+            };
+
+            if (loading) {
+                return React.createElement('div', { className: 'loading' }, 'Loading schema...');
+            }
+
+            if (!schema) {
+                return React.createElement('div', { className: 'card' },
+                    React.createElement('p', { style: { color: '#ef4444' } },
+                        'Failed to load schema. Is the parser service running?'
+                    )
+                );
+            }
+
+            return React.createElement('div', null,
+                // Config Card
+                React.createElement('div', { className: 'card' },
+                    React.createElement('h2', null, 'Parser Configuration'),
+                    React.createElement(JsonForms, {
+                        schema: schema,
+                        data: config,
+                        renderers: vanillaRenderers,
+                        cells: vanillaCells,
+                        onChange: ({ data }) => setConfig(data || {})
+                    })
+                ),
+
+                // File Upload Card
+                React.createElement('div', { className: 'card' },
+                    React.createElement('h2', null, 'Upload Document'),
+                    React.createElement('div', { className: 'file-upload' },
+                        React.createElement('input', {
+                            type: 'file',
+                            onChange: (e) => setSelectedFile(e.target.files[0]),
+                            accept: '.pdf,.doc,.docx,.txt,.html'
+                        }),
+                        selectedFile && React.createElement('p', { style: { marginTop: '10px' } },
+                            'Selected: ' + selectedFile.name
+                        )
+                    ),
+                    React.createElement('button', {
+                        onClick: handleParse,
+                        disabled: !selectedFile || parsing
+                    }, parsing ? 'Parsing...' : 'Parse Document'),
+                    React.createElement('button', {
+                        onClick: () => setResult(null),
+                        disabled: !result
+                    }, 'Clear Results')
+                ),
+
+                // Results Card
+                result && React.createElement('div', { className: 'card' },
+                    React.createElement('h2', null, 'Parse Results'),
+                    result.error
+                        ? React.createElement('p', { style: { color: '#ef4444' } }, result.error)
+                        : React.createElement('div', { className: 'result' },
+                            React.createElement('pre', null, JSON.stringify(result, null, 2))
+                        )
+                )
+            );
+        }
+
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
+    </script>
+</body>
+</html>

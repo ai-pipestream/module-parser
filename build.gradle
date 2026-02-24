@@ -78,7 +78,7 @@ dependencies {
     implementation 'de.siegmar:fastcsv:4.1.0'
 
     // Apache Tika dependencies - use shaded package
-    implementation 'ai.pipestream:tika4-shaded:0.1.16'
+    implementation 'ai.pipestream:tika4-shaded:0.1.17'
 
     // Markdown parsing (commonmark)
     implementation libs.commonmark

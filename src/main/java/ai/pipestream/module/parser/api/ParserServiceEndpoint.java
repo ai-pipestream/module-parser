@@ -4,6 +4,7 @@ import ai.pipestream.module.parser.schema.SchemaExtractorService;
 import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.data.v1.SearchMetadata;
 import ai.pipestream.module.parser.config.ParserConfig;
+import ai.pipestream.module.parser.service.RepositoryDocumentClient;
 import ai.pipestream.module.parser.util.DocumentParser;
 import com.google.protobuf.ByteString;
 import io.smallrye.mutiny.Uni;
@@ -63,6 +64,9 @@ public class ParserServiceEndpoint {
 
     @Inject
     ai.pipestream.module.parser.docling.DoclingMetadataExtractor doclingMetadataExtractor;
+
+    @Inject
+    RepositoryDocumentClient repositoryDocumentClient;
 
     @ConfigProperty(name = "module.name")
     String moduleName;
@@ -340,6 +344,154 @@ public class ParserServiceEndpoint {
             
             return Response.ok(response).build();
         });
+    }
+
+    @GET
+    @Path("/repository/documents")
+    @Operation(summary = "List repository documents", description = "List PipeDoc entries from repository-service for test execution")
+    @APIResponse(responseCode = "200", description = "Repository documents retrieved successfully")
+    public Uni<Response> getRepositoryDocuments(
+            @QueryParam("drive") @DefaultValue("default") String drive,
+            @QueryParam("limit") @DefaultValue("50") int limit,
+            @QueryParam("connectorId") String connectorId) {
+
+        return repositoryDocumentClient.listPipeDocs(drive, limit, connectorId)
+                .map(listResponse -> {
+                    List<Map<String, Object>> documents = new ArrayList<>();
+                    listResponse.getPipedocsList().forEach(doc -> {
+                        Map<String, Object> item = new HashMap<>();
+                        item.put("node_id", doc.getNodeId());
+                        item.put("doc_id", doc.getDocId());
+                        item.put("title", doc.getTitle());
+                        item.put("document_type", doc.getDocumentType());
+                        item.put("drive", doc.getDrive());
+                        item.put("connector_id", doc.getConnectorId());
+                        item.put("size_bytes", doc.getSizeBytes());
+                        item.put("created_at_epoch_ms", doc.getCreatedAtEpochMs());
+                        documents.add(item);
+                    });
+
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("documents", documents);
+                    response.put("total", listResponse.getTotalCount());
+                    response.put("nextContinuationToken", listResponse.getNextContinuationToken());
+                    return Response.ok(response).build();
+                })
+                .onFailure().recoverWithItem(error -> {
+                    LOG.error("Failed to list repository documents", error);
+                    return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                            .entity(Map.of("error", "Failed to list repository documents: " + error.getMessage()))
+                            .build();
+                });
+    }
+
+    @POST
+    @Path("/repository/parse")
+    @Operation(summary = "Parse repository document", description = "Load a document from repository-service and parse directly in module-parser")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @APIResponse(responseCode = "200", description = "Repository document parsed successfully")
+    public Uni<Response> parseRepositoryDocument(
+            @Schema(description = "Request with repository nodeId and optional ParserConfig")
+            Map<String, Object> request) {
+
+        String nodeId = (String) request.get("nodeId");
+        if (nodeId == null || nodeId.isBlank()) {
+            return Uni.createFrom().item(
+                    Response.status(Response.Status.BAD_REQUEST)
+                            .entity(Map.of("error", "nodeId is required"))
+                            .build()
+            );
+        }
+
+        ParserConfig config;
+        try {
+            config = request.containsKey("config")
+                    ? objectMapper.convertValue(request.get("config"), ParserConfig.class)
+                    : ParserConfig.defaultConfig();
+        } catch (IllegalArgumentException e) {
+            return Uni.createFrom().item(
+                    Response.status(Response.Status.BAD_REQUEST)
+                            .entity(Map.of("error", "Invalid config payload: " + e.getMessage()))
+                            .build()
+            );
+        }
+
+        return repositoryDocumentClient.getPipeDoc(nodeId)
+                .flatMap(pipeDocResponse -> {
+                    PipeDoc sourceDoc = pipeDocResponse.getPipedoc();
+                    if (!sourceDoc.hasBlobBag()
+                            || !sourceDoc.getBlobBag().hasBlob()
+                            || !sourceDoc.getBlobBag().getBlob().hasStorageRef()) {
+                        return Uni.createFrom().item(
+                                Response.status(Response.Status.BAD_REQUEST)
+                                        .entity(Map.of("error", "Repository document does not include blob storage reference"))
+                                        .build()
+                        );
+                    }
+
+                    ai.pipestream.data.v1.Blob sourceBlob = sourceDoc.getBlobBag().getBlob();
+                    ai.pipestream.data.v1.FileStorageReference storageRef = sourceBlob.getStorageRef();
+
+                    return repositoryDocumentClient.getBlob(storageRef)
+                            .flatMap(blobResponse -> Uni.createFrom().item(() -> {
+                                try {
+                                    byte[] content = blobResponse.getData().toByteArray();
+                                    String filename = sourceBlob.hasFilename()
+                                            ? sourceBlob.getFilename()
+                                            : sourceDoc.getDocId() + ".bin";
+
+                                    PipeDoc parsedDoc = documentParser.parseDocument(
+                                            ByteString.copyFrom(content),
+                                            config,
+                                            filename
+                                    );
+
+                                    ai.pipestream.parsed.data.docling.v1.DoclingResponse doclingResponse =
+                                            doclingMetadataExtractor.extractComprehensiveMetadata(
+                                                    content,
+                                                    filename,
+                                                    parsedDoc.getDocId(),
+                                                    config.doclingOptions()
+                                            );
+                                    if (doclingResponse != null) {
+                                        PipeDoc.Builder docBuilder = parsedDoc.toBuilder();
+                                        storeDoclingMetadata(docBuilder, doclingResponse);
+                                        parsedDoc = docBuilder.build();
+                                    }
+                                    Map<String, Object> result = new HashMap<>();
+                                    result.put("success", true);
+                                    result.put("source", Map.of(
+                                            "node_id", nodeId,
+                                            "doc_id", sourceDoc.getDocId(),
+                                            "drive", storageRef.getDriveName(),
+                                            "object_key", storageRef.getObjectKey(),
+                                            "filename", filename,
+                                            "blob_size_bytes", blobResponse.getSizeBytes()
+                                    ));
+                                    result.put("output_doc", buildOutputDoc(parsedDoc));
+                                    result.put("processorLogs", List.of(
+                                            "Parser service loaded document from repository-service",
+                                            "Source doc_id: " + sourceDoc.getDocId(),
+                                            "Configuration ID: " + config.configId(),
+                                            "Extracted title: '" + parsedDoc.getSearchMetadata().getTitle() + "'",
+                                            "Extracted body length: " + parsedDoc.getSearchMetadata().getBody().length() + " characters",
+                                            "Parsers used: " + String.join(", ", parsedDoc.getParsedMetadataMap().keySet())
+                                    ));
+                                    return Response.ok(result).build();
+                                } catch (Exception e) {
+                                    LOG.error("Failed to parse repository document content", e);
+                                    return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                                            .entity(Map.of("error", "Repository content parsing failed: " + e.getMessage()))
+                                            .build();
+                                }
+                            }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
+                })
+                .onFailure().recoverWithItem(error -> {
+                    LOG.errorf(error, "Failed to parse repository document: node_id=%s", nodeId);
+                    return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                            .entity(Map.of("error", "Repository parse failed: " + error.getMessage()))
+                            .build();
+                });
     }
 
     @POST
@@ -851,6 +1003,54 @@ public class ParserServiceEndpoint {
                     .build();
             }
         }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+    }
+
+    private Map<String, Object> buildOutputDoc(PipeDoc parsedDoc) {
+        Map<String, Object> outputDoc = new HashMap<>();
+        outputDoc.put("id", parsedDoc.getDocId());
+        outputDoc.put("title", parsedDoc.getSearchMetadata().getTitle());
+        outputDoc.put("body", parsedDoc.getSearchMetadata().getBody());
+
+        if (parsedDoc.hasStructuredData()) {
+            Map<String, Object> structuredData = new HashMap<>();
+            structuredData.put("type", parsedDoc.getStructuredData().getTypeUrl());
+            structuredData.put("hasData", true);
+            outputDoc.put("structuredData", structuredData);
+        }
+
+        if (!parsedDoc.getParsedMetadataMap().isEmpty()) {
+            Map<String, Object> parsedMetadataMap = new HashMap<>();
+            parsedDoc.getParsedMetadataMap().forEach((key, metadata) -> {
+                Map<String, Object> metadataObj = new HashMap<>();
+                metadataObj.put("parser_name", metadata.getParserName());
+                metadataObj.put("parser_version", metadata.getParserVersion());
+                metadataObj.put("parsed_at", metadata.getParsedAt().getSeconds());
+
+                try {
+                    com.google.protobuf.TypeRegistry typeRegistry = com.google.protobuf.TypeRegistry.newBuilder()
+                            .add(ai.pipestream.parsed.data.tika.v1.TikaResponse.getDescriptor())
+                            .add(ai.pipestream.parsed.data.docling.v1.DoclingResponse.getDescriptor())
+                            .build();
+
+                    com.google.protobuf.util.JsonFormat.Printer printer = com.google.protobuf.util.JsonFormat.printer()
+                            .usingTypeRegistry(typeRegistry);
+
+                    String dataJson = printer.print(metadata.getData());
+                    Object dataObj = objectMapper.readValue(dataJson, Object.class);
+                    metadataObj.put("data", dataObj);
+                } catch (Exception e) {
+                    LOG.warn("Failed to print Any data to JSON", e);
+                    metadataObj.put("data_error", e.getMessage());
+                }
+
+                metadataObj.put("has_data", metadata.hasData());
+                metadataObj.put("data_type", metadata.getData().getTypeUrl());
+                parsedMetadataMap.put(key, metadataObj);
+            });
+            outputDoc.put("parsed_metadata", parsedMetadataMap);
+        }
+
+        return outputDoc;
     }
 
     @POST

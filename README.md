@@ -271,20 +271,20 @@ cd module-parser
 ./gradlew quarkusDev
 ```
 
-The service will start on port `39001` with:
-- **gRPC** (unchanged by REST path): `localhost:39001` – service `ai.pipestream.data.module.v1.PipeStepProcessorService`
-- **REST API**: `http://localhost:39001/modules/parser/api/parser/service/`
-- **OpenAPI**: `http://localhost:39001/q/openapi`
-- **Swagger UI**: `http://localhost:39001/q/swagger-ui/`
+The service will start on port `19001` with:
+- **gRPC** (unchanged by REST path): `localhost:19001` – service `ai.pipestream.data.module.v1.PipeStepProcessorService`
+- **REST API**: `http://localhost:19001/modules/parser/api/parser/service/`
+- **OpenAPI**: `http://localhost:19001/q/openapi`
+- **Swagger UI**: `http://localhost:19001/q/swagger-ui/`
 
 3. **Test with a sample document (REST)**
 ```bash
-curl -F "file=@sample.pdf" http://localhost:39001/modules/parser/api/parser/service/parse-file
+curl -F "file=@sample.pdf" http://localhost:19001/modules/parser/api/parser/service/parse-file
 ```
 
 4. **Test gRPC ProcessData (requires grpcurl)**
 ```bash
-grpcurl -plaintext -d @ localhost:39001 ai.pipestream.data.module.v1.PipeStepProcessorService/ProcessData < scripts/grpcurl-process-test.json
+grpcurl -plaintext -d @ localhost:19001 ai.pipestream.data.module.v1.PipeStepProcessorService/ProcessData < scripts/grpcurl-process-test.json
 ```
 
 ### Running Tests
@@ -524,7 +524,7 @@ Features in dev mode:
 Build and run with Docker:
 ```bash
 ./gradlew build -Dquarkus.container-image.build=true
-docker run -p 39001:39001 ai.pipestream.module/module-parser:latest
+docker run -p 19001:19001 ai.pipestream.module/module-parser:latest
 ```
 
 ### Kubernetes/OpenShift

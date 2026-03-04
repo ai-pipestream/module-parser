@@ -8,7 +8,7 @@
               Parser Test Dashboard
             </v-toolbar-title>
             <v-spacer></v-spacer>
-            <v-btn icon="mdi-refresh" @click="fetchSchema" :loading="loading" variant="text"></v-btn>
+            <v-btn icon="mdi-refresh" @click="refreshData" :loading="loading" variant="text"></v-btn>
           </v-toolbar>
           
           <v-card-text class="pa-4">
@@ -37,20 +37,20 @@
                   </v-col>
                   <v-col cols="12" md="6">
                     <v-select
-                      v-model="selectedSample"
-                      :items="samples"
-                      item-title="title"
-                      item-value="filename"
-                      label="Or choose from samples"
-                      prepend-icon="mdi-library-books"
+                      v-model="selectedRepositoryNodeId"
+                      :items="repositoryDocuments"
+                      item-title="label"
+                      item-value="node_id"
+                      label="Or choose from repository-service"
+                      prepend-icon="mdi-database-search"
                       variant="outlined"
                       density="comfortable"
                       hide-details
                       clearable
-                      @update:model-value="onSampleSelected"
+                      @update:model-value="onRepositoryDocumentSelected"
                     >
                       <template v-slot:item="{ props, item }">
-                        <v-list-item v-bind="props" :subtitle="item.raw.description"></v-list-item>
+                        <v-list-item v-bind="props" :subtitle="item.raw.subtitle"></v-list-item>
                       </template>
                     </v-select>
                   </v-col>
@@ -60,20 +60,11 @@
                   <v-btn
                     color="primary"
                     :disabled="!canRun || parsing"
-                    :loading="parsing && lastMode === 'direct'"
-                    @click="runParse('direct')"
+                    :loading="parsing"
+                    @click="runParse"
                     prepend-icon="mdi-play"
                   >
-                    Direct Parse
-                  </v-btn>
-                  <v-btn
-                    color="secondary"
-                    :disabled="!canRun || parsing"
-                    :loading="parsing && lastMode === 'test'"
-                    @click="runParse('test')"
-                    prepend-icon="mdi-flask"
-                  >
-                    Run as Test Process
+                    Run Test
                   </v-btn>
                   <v-btn variant="text" v-if="parseResult" @click="parseResult = null">Clear Results</v-btn>
                 </div>
@@ -82,9 +73,7 @@
                   <v-divider class="mb-4"></v-divider>
                   <div class="d-flex align-center mb-2 flex-wrap">
                     <div class="text-subtitle-2">Response:</div>
-                    <v-chip size="x-small" class="ml-2" :color="parseResult.success ? 'success' : 'error'">
-                      {{ lastMode === 'direct' ? 'Direct' : 'Test Mode' }}
-                    </v-chip>
+                    <v-chip size="x-small" class="ml-2" :color="parseResult.success ? 'success' : 'error'">Test Run</v-chip>
                     <v-chip size="x-small" class="ml-2" color="info" v-if="parseResult._ui_timing_ms">
                       <v-icon start icon="mdi-clock-outline" size="small"></v-icon>
                       {{ parseResult._ui_timing_ms }} ms
@@ -162,15 +151,14 @@ const data = ref({})
 const loading = ref(true)
 const error = ref(null)
 
-const samples = ref([])
-const selectedSample = ref(null)
+const repositoryDocuments = ref([])
+const selectedRepositoryNodeId = ref(null)
 const testFile = ref(null)
 const parsing = ref(false)
 const parseResult = ref(null)
-const lastMode = ref('direct')
 
 const canRun = computed(() => {
-  return testFile.value || selectedSample.value
+  return testFile.value || selectedRepositoryNodeId.value
 })
 
 const uischema = {
@@ -235,49 +223,44 @@ const onChange = (event) => {
 }
 
 const onFileSelected = () => {
-  selectedSample.value = null
+  selectedRepositoryNodeId.value = null
 }
 
-const onSampleSelected = (filename) => {
-  if (filename) testFile.value = null
+const onRepositoryDocumentSelected = (nodeId) => {
+  if (nodeId) testFile.value = null
 }
 
 // Derive API base from the Vite base URL (e.g., /modules/parser/admin/ -> /modules/parser/api)
 const apiBase = import.meta.env.BASE_URL.replace(/\/admin\/$/, '/api')
 
-const runParse = async (mode) => {
-  lastMode.value = mode
+const runParse = async () => {
   parsing.value = true
   parseResult.value = null
   
-  const formData = new FormData()
-  
   try {
-    if (selectedSample.value) {
-      // Fetch the sample from the static path (relative to root-path)
-      // samples are at /modules/parser/samples/...
-      // apiBase is /modules/parser/api
-      // so root is apiBase without /api
-      const rootPath = apiBase.replace(/\/api$/, '')
-      const url = `${rootPath}/samples/${selectedSample.value}`
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(`Could not load sample: ${res.status}`)
-      const blob = await res.blob()
-      formData.append('file', blob, selectedSample.value)
+    let response
+    const startTime = performance.now()
+
+    if (selectedRepositoryNodeId.value) {
+      response = await fetch(`${apiBase}/parser/service/repository/parse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: selectedRepositoryNodeId.value,
+          config: data.value
+        })
+      })
     } else {
+      const formData = new FormData()
       const file = Array.isArray(testFile.value) ? testFile.value[0] : testFile.value
       formData.append('file', file)
+      formData.append('config', JSON.stringify(data.value))
+      response = await fetch(`${apiBase}/parser/service/parse-file`, {
+        method: 'POST',
+        body: formData
+      })
     }
-    
-    formData.append('config', JSON.stringify(data.value))
 
-    const endpoint = mode === 'test' ? 'test-process' : 'parse-file'
-    
-    const startTime = performance.now()
-    const response = await fetch(`${apiBase}/parser/service/${endpoint}`, {
-      method: 'POST',
-      body: formData
-    })
     const endTime = performance.now()
     const duration = Math.round(endTime - startTime)
     
@@ -293,13 +276,27 @@ const runParse = async (mode) => {
   }
 }
 
-const fetchSamples = async () => {
+const formatBytes = (bytes) => {
+  if (!bytes || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / Math.pow(1024, exp)
+  return `${value.toFixed(exp === 0 ? 0 : 1)} ${units[exp]}`
+}
+
+const fetchRepositoryDocuments = async () => {
   try {
-    const res = await fetch(`${apiBase}/parser/service/demo/documents`)
+    const res = await fetch(`${apiBase}/parser/service/repository/documents?drive=default&limit=100`)
+    if (!res.ok) throw new Error(`Backend error: ${res.status}`)
     const json = await res.json()
-    samples.value = json.documents || []
+    repositoryDocuments.value = (json.documents || []).map((doc) => ({
+      ...doc,
+      label: doc.title || doc.doc_id || doc.node_id,
+      subtitle: `doc_id=${doc.doc_id} • drive=${doc.drive} • ${formatBytes(doc.size_bytes)}`
+    }))
   } catch (e) {
-    console.warn('Failed to fetch samples', e)
+    console.warn('Failed to fetch repository documents', e)
+    repositoryDocuments.value = []
   }
 }
 
@@ -318,9 +315,13 @@ const fetchSchema = async () => {
   }
 }
 
+const refreshData = async () => {
+  await fetchSchema()
+  await fetchRepositoryDocuments()
+}
+
 onMounted(() => {
-  fetchSchema()
-  fetchSamples()
+  refreshData()
 })
 </script>
 

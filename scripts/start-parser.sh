@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Parser Module Startup Script
-# Port: 39001 (Document Parser Module)
+# Port: 19001 (Document Parser Module)
 # This script helps start the parser module in development mode
 # with proper environment variable detection and instance management.
 
@@ -66,7 +66,7 @@ fi
 
 # Service configuration
 SERVICE_NAME="Parser Module"
-SERVICE_PORT="39001"
+SERVICE_PORT="19001"
 DESCRIPTION="Document parsing module using Apache Tika for text and metadata extraction"
 
 # Check dependencies

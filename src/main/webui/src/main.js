@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import JsonViewer from 'vue3-json-viewer'
 import 'vue3-json-viewer/dist/vue3-json-viewer.css'
+import '@jsonforms/vue-vuetify/lib/jsonforms-vue-vuetify.css'
 
 // Vuetify
 import 'vuetify/styles'

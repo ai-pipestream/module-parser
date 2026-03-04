@@ -42,7 +42,7 @@ pipestreamProtos {
 }
 
 dependencies {
-    implementation 'io.quarkiverse.docling:quarkus-docling:1.2.2'
+    implementation 'io.quarkiverse.docling:quarkus-docling:1.2.3'
     implementation 'io.quarkus:quarkus-smallrye-openapi'
     // Import pipestream BOM to align all managed versions
     implementation platform("ai.pipestream:pipestream-bom:${pipestreamBomVersion}")
@@ -69,7 +69,7 @@ dependencies {
     implementation 'ai.pipestream:pipestream-server'
 
     // Quinoa for frontend integration
-    implementation 'io.quarkiverse.quinoa:quarkus-quinoa:2.7.1'
+    implementation 'io.quarkiverse.quinoa:quarkus-quinoa:2.7.2'
 
     // Protobuf JSON utilities
     implementation 'com.google.protobuf:protobuf-java-util'
@@ -78,7 +78,7 @@ dependencies {
     implementation 'de.siegmar:fastcsv:4.1.0'
 
     // Apache Tika dependencies - use shaded package
-    implementation 'ai.pipestream:tika4-shaded:0.1.16'
+    implementation 'ai.pipestream:tika4-shaded:0.1.17'
 
     // Markdown parsing (commonmark)
     implementation libs.commonmark

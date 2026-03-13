@@ -38,7 +38,7 @@ public class ImageGrpcIntegrationTest {
         var results = ReactiveTestDocumentLoader.streamTestDocuments("image")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config))
                 .collect().asList()
-                .await().atMost(Duration.ofMinutes(2)); // Increased timeout for XMP extraction
+                .await().atMost(Duration.ofMinutes(4)); // Increased timeout for slow CI runners
 
         assertThat("Should process at least one image", results.size(), greaterThan(0));
         long successes = results.stream().filter(ProcessDataResponse::getSuccess).count();

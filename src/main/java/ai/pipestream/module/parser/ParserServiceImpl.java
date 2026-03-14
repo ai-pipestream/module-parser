@@ -98,9 +98,11 @@ public class ParserServiceImpl implements PipeStepProcessorService {
              return Uni.createFrom().item(ProcessDataResponse.newBuilder()
                     .setSuccess(true)
                     .setOutputDoc(request.getDocument())
-                    .addProcessorLogs("Parser service received document with no blob data - passing through unchanged")
+                    .addProcessorLogs("No blob data present — document " + docId + " passed through without parsing")
                     .build());
         }
+
+        final long startTime = System.currentTimeMillis();
 
         // Capture final variables for lambdas
         final com.google.protobuf.ByteString finalBlobData = blobData;
@@ -177,14 +179,54 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                 enrichDocument(outputDocBuilder, ctx.tikaResponse, ctx);
 
                     PipeDoc outputDoc = outputDocBuilder.build();
-                    return ProcessDataResponse.newBuilder()
+                    long duration = System.currentTimeMillis() - startTime;
+                    String bodyText = outputDoc.getSearchMetadata().getBody();
+                    int wordCount = bodyText.isEmpty() ? 0 : bodyText.split("\\s+").length;
+                    String mimeType = outputDoc.getSearchMetadata().hasSourceMimeType()
+                            ? outputDoc.getSearchMetadata().getSourceMimeType() : "unknown";
+                    String title = outputDoc.getSearchMetadata().hasTitle()
+                            ? outputDoc.getSearchMetadata().getTitle() : "(none)";
+
+                    ProcessDataResponse.Builder respBuilder = ProcessDataResponse.newBuilder()
                             .setSuccess(true)
-                            .setOutputDoc(outputDoc)
-                            .addProcessorLogs("Parser service successfully processed document")
-                            .addProcessorLogs(String.format("Extracted title: '%s'", outputDoc.getSearchMetadata().getTitle()))
-                            .addProcessorLogs(String.format("Extracted body length: %d", outputDoc.getSearchMetadata().getBody().length()))
-                            .addProcessorLogs(String.format("Extracted custom data fields: %d", outputDoc.hasStructuredData() ? 1 : 0))
-                            .build();
+                            .setOutputDoc(outputDoc);
+
+                    respBuilder.addProcessorLogs(String.format(
+                            "Document received: %s, %d bytes, MIME type: %s",
+                            finalFilename != null ? finalFilename : "(no filename)",
+                            finalBlobData.size(), mimeType));
+
+                    boolean isFontFile = (finalFilename != null && finalFilename.toLowerCase().matches(".*\\.(ttf|ttc|otf|woff2?|pfa|pfb)$"));
+                    if (isFontFile) {
+                        respBuilder.addProcessorLogs(String.format(
+                                "Font file detected (%s) — skipped parsing, using filename as title", finalFilename));
+                    } else {
+                        respBuilder.addProcessorLogs(String.format(
+                                "Parsed successfully: extracted %d words, title: '%s'", wordCount, title));
+                    }
+
+                    if (ctx.tikaResponse != null) {
+                        respBuilder.addProcessorLogs("Tika metadata stored on document");
+                    }
+                    if (doclingRes.isPresent()) {
+                        respBuilder.addProcessorLogs("Docling metadata stored on document");
+                    }
+
+                    int outlineSections = outputDoc.getSearchMetadata().hasDocOutline()
+                            ? outputDoc.getSearchMetadata().getDocOutline().getSectionsCount() : 0;
+                    if (outlineSections > 0) {
+                        respBuilder.addProcessorLogs(String.format(
+                                "Document outline extracted: %d sections", outlineSections));
+                    }
+
+                    int linkCount = outputDoc.getSearchMetadata().getDiscoveredLinksCount();
+                    if (linkCount > 0) {
+                        respBuilder.addProcessorLogs(String.format("Discovered %d links", linkCount));
+                    }
+
+                    respBuilder.addProcessorLogs(String.format("Parsing completed in %dms", duration));
+
+                    return respBuilder.build();
                 })
         .onFailure().recoverWithItem(t -> {
             LOG.error("Error parsing document: " + t.getMessage(), t);

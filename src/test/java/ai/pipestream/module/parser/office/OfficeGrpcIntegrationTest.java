@@ -63,7 +63,7 @@ public class OfficeGrpcIntegrationTest {
                                 }
                             } else {
                                 tracker.recordFailure();
-                                LOG.warnf("gRPC parse failed: %s", resp.getProcessorLogsList());
+                                LOG.warnf("gRPC parse failed: %s", resp.getLogEntriesList().stream().map(ai.pipestream.data.v1.LogEntry::getMessage).toList());
                             }
                         })
                 )

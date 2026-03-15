@@ -4,6 +4,10 @@ import ai.pipestream.module.parser.schema.SchemaExtractorService;
 import ai.pipestream.data.module.v1.*;
 import ai.pipestream.data.v1.Blob;
 import ai.pipestream.data.v1.DocOutline;
+import ai.pipestream.data.v1.LogEntry;
+import ai.pipestream.data.v1.LogEntrySource;
+import ai.pipestream.data.v1.LogLevel;
+import ai.pipestream.data.v1.ModuleLogOrigin;
 import ai.pipestream.data.v1.PipeDoc;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.v1.SearchMetadata;
@@ -43,6 +47,16 @@ public class ParserServiceImpl implements PipeStepProcessorService {
 
     private static final Logger LOG = Logger.getLogger(ParserServiceImpl.class);
 
+    private static LogEntry moduleLog(String message, LogLevel level) {
+        return LogEntry.newBuilder()
+                .setSource(LogEntrySource.LOG_ENTRY_SOURCE_MODULE)
+                .setLevel(level)
+                .setMessage(message)
+                .setTimestampEpochMs(System.currentTimeMillis())
+                .setModule(ModuleLogOrigin.newBuilder().setModuleName("parser").build())
+                .build();
+    }
+
     @Inject
     ObjectMapper objectMapper;
 
@@ -66,7 +80,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
         if (!request.hasDocument()) {
             return Uni.createFrom().item(ProcessDataResponse.newBuilder()
                     .setSuccess(true)
-                    .addProcessorLogs("Parser service received request with no document")
+                    .addLogEntries(moduleLog("Parser service received request with no document", LogLevel.LOG_LEVEL_INFO))
                     .build());
         }
 
@@ -98,7 +112,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
              return Uni.createFrom().item(ProcessDataResponse.newBuilder()
                     .setSuccess(true)
                     .setOutputDoc(request.getDocument())
-                    .addProcessorLogs("No blob data present — document " + docId + " passed through without parsing")
+                    .addLogEntries(moduleLog("No blob data present — document " + docId + " passed through without parsing", LogLevel.LOG_LEVEL_INFO))
                     .build());
         }
 
@@ -191,40 +205,40 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                             .setSuccess(true)
                             .setOutputDoc(outputDoc);
 
-                    respBuilder.addProcessorLogs(String.format(
+                    respBuilder.addLogEntries(moduleLog(String.format(
                             "Document received: %s, %d bytes, MIME type: %s",
                             finalFilename != null ? finalFilename : "(no filename)",
-                            finalBlobData.size(), mimeType));
+                            finalBlobData.size(), mimeType), LogLevel.LOG_LEVEL_INFO));
 
                     boolean isFontFile = (finalFilename != null && finalFilename.toLowerCase().matches(".*\\.(ttf|ttc|otf|woff2?|pfa|pfb)$"));
                     if (isFontFile) {
-                        respBuilder.addProcessorLogs(String.format(
-                                "Font file detected (%s) — skipped parsing, using filename as title", finalFilename));
+                        respBuilder.addLogEntries(moduleLog(String.format(
+                                "Font file detected (%s) — skipped parsing, using filename as title", finalFilename), LogLevel.LOG_LEVEL_INFO));
                     } else {
-                        respBuilder.addProcessorLogs(String.format(
-                                "Parsed successfully: extracted %d words, title: '%s'", wordCount, title));
+                        respBuilder.addLogEntries(moduleLog(String.format(
+                                "Parsed successfully: extracted %d words, title: '%s'", wordCount, title), LogLevel.LOG_LEVEL_INFO));
                     }
 
                     if (ctx.tikaResponse != null) {
-                        respBuilder.addProcessorLogs("Tika metadata stored on document");
+                        respBuilder.addLogEntries(moduleLog("Tika metadata stored on document", LogLevel.LOG_LEVEL_INFO));
                     }
                     if (doclingRes.isPresent()) {
-                        respBuilder.addProcessorLogs("Docling metadata stored on document");
+                        respBuilder.addLogEntries(moduleLog("Docling metadata stored on document", LogLevel.LOG_LEVEL_INFO));
                     }
 
                     int outlineSections = outputDoc.getSearchMetadata().hasDocOutline()
                             ? outputDoc.getSearchMetadata().getDocOutline().getSectionsCount() : 0;
                     if (outlineSections > 0) {
-                        respBuilder.addProcessorLogs(String.format(
-                                "Document outline extracted: %d sections", outlineSections));
+                        respBuilder.addLogEntries(moduleLog(String.format(
+                                "Document outline extracted: %d sections", outlineSections), LogLevel.LOG_LEVEL_INFO));
                     }
 
                     int linkCount = outputDoc.getSearchMetadata().getDiscoveredLinksCount();
                     if (linkCount > 0) {
-                        respBuilder.addProcessorLogs(String.format("Discovered %d links", linkCount));
+                        respBuilder.addLogEntries(moduleLog(String.format("Discovered %d links", linkCount), LogLevel.LOG_LEVEL_INFO));
                     }
 
-                    respBuilder.addProcessorLogs(String.format("Parsing completed in %dms", duration));
+                    respBuilder.addLogEntries(moduleLog(String.format("Parsing completed in %dms", duration), LogLevel.LOG_LEVEL_INFO));
 
                     return respBuilder.build();
                 })
@@ -232,7 +246,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
             LOG.error("Error parsing document: " + t.getMessage(), t);
             return ProcessDataResponse.newBuilder()
                     .setSuccess(false)
-                    .addProcessorLogs("Parser service failed: " + t.getMessage())
+                    .addLogEntries(moduleLog("Parser service failed: " + t.getMessage(), LogLevel.LOG_LEVEL_ERROR))
                     .build();
         });
     }

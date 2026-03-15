@@ -109,7 +109,7 @@ public class ParserServiceComprehensiveTestRefactored {
                         } else {
                             tracker.recordFailure();
                             LOG.warnf("Failed to process document %s: %s", 
-                                testDoc.getDocId(), response.getProcessorLogsList());
+                                testDoc.getDocId(), response.getLogEntriesList().stream().map(ai.pipestream.data.v1.LogEntry::getMessage).toList());
                         }
                     })
                     .onFailure().invoke(error -> {

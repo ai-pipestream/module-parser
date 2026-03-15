@@ -154,9 +154,9 @@ public class SourceDocumentProcessingTestRefactored {
                                 testDoc.getBlobBag().getBlob().getFilename() : "unknown";
                             LOG.warnf("Failed to process: %s", filename);
                             
-                            if (response.getProcessorLogsCount() > 0) {
-                                for (String logEntry : response.getProcessorLogsList()) {
-                                    LOG.debugf("  Parser log: %s", logEntry);
+                            if (response.getLogEntriesCount() > 0) {
+                                for (ai.pipestream.data.v1.LogEntry logEntry : response.getLogEntriesList()) {
+                                    LOG.debugf("  Parser log: %s", logEntry.getMessage());
                                 }
                             }
                         }

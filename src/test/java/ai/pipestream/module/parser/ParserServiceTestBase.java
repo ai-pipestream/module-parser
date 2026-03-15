@@ -8,9 +8,11 @@ import ai.pipestream.data.v1.SearchMetadata;
 import ai.pipestream.data.v1.BlobBag;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.*;
+import ai.pipestream.data.v1.LogEntry;
 import io.smallrye.mutiny.helpers.test.UniAssertSubscriber;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -42,7 +44,7 @@ public abstract class ParserServiceTestBase {
         assertThat("Parsed body should contain original content",
                 outputDoc.getSearchMetadata().getBody(), containsString("sample text document"));
         assertThat("Processing logs should indicate success",
-                response.getProcessorLogsList(), hasItem(containsString("Parsed successfully")));
+                logMessages(response), hasItem(containsString("Parsed successfully")));
     }
 
     @Test
@@ -77,7 +79,7 @@ public abstract class ParserServiceTestBase {
         assertThat("Tika metadata should have parser name set",
                 outputDoc.getParsedMetadataMap().get("tika").getParserName(), is("tika"));
         assertThat("Processing logs should mention metadata extraction",
-                response.getProcessorLogsList(), hasItem(containsString("Tika metadata stored")));
+                logMessages(response), hasItem(containsString("Tika metadata stored")));
     }
 
     @Test
@@ -123,7 +125,7 @@ public abstract class ParserServiceTestBase {
         assertThat("Parser should handle documents without blob data", response.getSuccess(), is(true));
         assertThat("Response should contain output document", response.hasOutputDoc(), is(true));
         assertThat("Processing logs should indicate no blob data",
-                response.getProcessorLogsList(), hasItem(containsString("No blob data present")));
+                logMessages(response), hasItem(containsString("No blob data present")));
     }
 
     @Test
@@ -141,7 +143,7 @@ public abstract class ParserServiceTestBase {
         assertThat("Parser should handle requests without documents", response.getSuccess(), is(true));
         assertThat("Response should not contain output document", response.hasOutputDoc(), is(false));
         assertThat("Processing logs should indicate no document",
-                response.getProcessorLogsList(), hasItem(containsString("no document")));
+                logMessages(response), hasItem(containsString("no document")));
     }
 
     // testServiceRegistration moved to integration tests (ServiceRegistrationIT)
@@ -181,6 +183,10 @@ public abstract class ParserServiceTestBase {
     }
 
     // Helper methods
+    private static List<String> logMessages(ProcessDataResponse response) {
+        return response.getLogEntriesList().stream().map(LogEntry::getMessage).toList();
+    }
+
     private PipeDoc createTestDocument(String docId, String content, String mimeType, String filename) {
         Blob blob = Blob.newBuilder()
                 .setBlobId(docId + "-blob")

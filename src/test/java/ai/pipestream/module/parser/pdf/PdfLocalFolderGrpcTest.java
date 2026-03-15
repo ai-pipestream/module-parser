@@ -68,7 +68,7 @@ public class PdfLocalFolderGrpcTest {
                         }
                     }
                 } else {
-                    LOG.warnf("Failed to process local PDF %s: %s", p.getFileName(), resp.getProcessorLogsList());
+                    LOG.warnf("Failed to process local PDF %s: %s", p.getFileName(), resp.getLogEntriesList().stream().map(ai.pipestream.data.v1.LogEntry::getMessage).toList());
                 }
             }
         }

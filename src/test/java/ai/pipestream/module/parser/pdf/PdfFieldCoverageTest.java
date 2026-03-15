@@ -53,7 +53,7 @@ public class PdfFieldCoverageTest {
                         .onItem().invoke(resp -> {
                             docsParsed.incrementAndGet();
                             if (!resp.getSuccess() || !resp.hasOutputDoc()) {
-                                LOG.warnf("Failed to process: %s", resp.getProcessorLogsList());
+                                LOG.warnf("Failed to process: %s", resp.getLogEntriesList().stream().map(ai.pipestream.data.v1.LogEntry::getMessage).toList());
                                 return;
                             }
                             PipeDoc out = resp.getOutputDoc();

@@ -42,7 +42,7 @@ public abstract class ParserServiceTestBase {
         assertThat("Parsed body should contain original content",
                 outputDoc.getSearchMetadata().getBody(), containsString("sample text document"));
         assertThat("Processing logs should indicate success",
-                response.getProcessorLogsList(), hasItem(containsString("successfully processed")));
+                response.getProcessorLogsList(), hasItem(containsString("Parsed successfully")));
     }
 
     @Test
@@ -77,7 +77,7 @@ public abstract class ParserServiceTestBase {
         assertThat("Tika metadata should have parser name set",
                 outputDoc.getParsedMetadataMap().get("tika").getParserName(), is("tika"));
         assertThat("Processing logs should mention metadata extraction",
-                response.getProcessorLogsList(), hasItem(containsString("Extracted custom data fields")));
+                response.getProcessorLogsList(), hasItem(containsString("Tika metadata stored")));
     }
 
     @Test
@@ -123,7 +123,7 @@ public abstract class ParserServiceTestBase {
         assertThat("Parser should handle documents without blob data", response.getSuccess(), is(true));
         assertThat("Response should contain output document", response.hasOutputDoc(), is(true));
         assertThat("Processing logs should indicate no blob data",
-                response.getProcessorLogsList(), hasItem(containsString("no blob data")));
+                response.getProcessorLogsList(), hasItem(containsString("No blob data present")));
     }
 
     @Test

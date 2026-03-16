@@ -22,10 +22,12 @@ import ai.pipestream.module.parser.tika.TikaMetadataExtractor;
 import com.google.protobuf.Any;
 import ai.pipestream.module.parser.schema.SchemaEnhancer;
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.runtime.Quarkus;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 import java.util.Map;
@@ -71,6 +73,21 @@ public class ParserServiceImpl implements PipeStepProcessorService {
 
     @Inject
     ai.pipestream.module.parser.docling.DoclingMetadataExtractor doclingMetadataExtractor;
+
+    @ConfigProperty(name = "quarkus.application.version", defaultValue = "unknown")
+    String appVersion;
+
+    @ConfigProperty(name = "quarkus.profile", defaultValue = "prod")
+    String activeProfile;
+
+    @ConfigProperty(name = "pipestream.build.commit", defaultValue = "unknown")
+    String buildCommit;
+
+    @ConfigProperty(name = "pipestream.build.branch", defaultValue = "unknown")
+    String buildBranch;
+
+    @ConfigProperty(name = "pipestream.build.time", defaultValue = "unknown")
+    String buildTime;
 
     @Override
     public Uni<ProcessDataResponse> processData(ProcessDataRequest request) {
@@ -372,7 +389,8 @@ public class ParserServiceImpl implements PipeStepProcessorService {
 
         GetServiceRegistrationResponse.Builder responseBuilder = GetServiceRegistrationResponse.newBuilder()
                 .setModuleName("parser")
-                .setVersion("1.0.0-SNAPSHOT")
+                .setVersion(appVersion)
+                .putAllMetadata(buildRegistrationMetadata())
                 .setCapabilities(Capabilities.newBuilder().addTypes(CapabilityType.CAPABILITY_TYPE_PARSER).build());
 
         Optional<String> schemaOptional = schemaExtractorService.extractParserConfigSchemaResolvedForJsonForms();
@@ -431,6 +449,27 @@ public class ParserServiceImpl implements PipeStepProcessorService {
     
     private String structToJsonString(Struct struct) throws Exception {
         return JsonFormat.printer().print(struct);
+    }
+
+    private Map<String, String> buildRegistrationMetadata() {
+        Map<String, String> metadata = new TreeMap<>();
+        metadata.put("build.version", appVersion);
+        metadata.put("build.commit", buildCommit);
+        metadata.put("build.branch", buildBranch);
+        metadata.put("build.time", buildTime);
+        metadata.put("runtime.java", System.getProperty("java.version", "unknown"));
+        metadata.put("runtime.quarkus", quarkusVersion());
+        metadata.put("runtime.profile", activeProfile);
+        metadata.put("runtime.hostname", System.getenv().getOrDefault("HOSTNAME", "unknown"));
+        return metadata;
+    }
+
+    private String quarkusVersion() {
+        Package quarkusPackage = Quarkus.class.getPackage();
+        if (quarkusPackage != null && quarkusPackage.getImplementationVersion() != null) {
+            return quarkusPackage.getImplementationVersion();
+        }
+        return "unknown";
     }
 
     private boolean shouldExtractComprehensiveMetadata(ParserConfig config) {

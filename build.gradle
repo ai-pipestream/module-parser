@@ -28,8 +28,8 @@ scmVersion {
 // Proto toolchain configuration - uses git-proto-workspace mode for cross-module imports
 pipestreamProtos {
     sourceMode = 'git-proto-workspace'
-    gitRepo = "https://github.com/ai-pipestream/pipestream-protos.git"
-    gitRef = "main"
+    gitRepo = System.getenv('PROTO_GIT_REPO') ?: "https://github.com/ai-pipestream/pipestream-protos.git"
+    gitRef = System.getenv('PROTO_GIT_REF') ?: "main"
     generateMutiny = true
     generateDescriptors = true
 
@@ -37,6 +37,7 @@ pipestreamProtos {
         register("common")
         register("pipeline-module")
         register("parser")
+        register("djl-serving")
         register("config")
         register("repo")
     }
@@ -66,6 +67,7 @@ dependencies {
     // Pipestream platform libraries
     implementation 'ai.pipestream:pipestream-quarkus-devservices'
     implementation 'ai.pipestream:quarkus-dynamic-grpc'
+    implementation 'ai.pipestream:pipestream-djl-serving'
     implementation 'ai.pipestream:pipestream-service-registration'
     implementation 'ai.pipestream:pipestream-server'
 

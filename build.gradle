@@ -67,7 +67,6 @@ dependencies {
     // Pipestream platform libraries
     implementation 'ai.pipestream:pipestream-quarkus-devservices'
     implementation 'ai.pipestream:quarkus-dynamic-grpc'
-    implementation 'ai.pipestream:pipestream-djl-serving'
     implementation 'ai.pipestream:pipestream-service-registration'
     implementation 'ai.pipestream:pipestream-server'
 

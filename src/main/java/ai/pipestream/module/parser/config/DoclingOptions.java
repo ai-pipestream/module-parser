@@ -17,7 +17,8 @@ import java.util.List;
  */
 @RegisterForReflection(targets = {
     InputFormat.class, OutputFormat.class, ImageRefMode.class, OcrEngine.class, 
-    PdfBackend.class, TableFormerMode.class, ProcessingPipeline.class
+    PdfBackend.class, TableFormerMode.class, ProcessingPipeline.class,
+    PictureDescriptionLocal.class, PictureDescriptionApi.class, VlmModelType.class
 })
 @Schema(
     name = "DoclingOptions",
@@ -202,15 +203,15 @@ public record DoclingOptions(
 
     @JsonProperty("picture_description_local")
     @Schema(
-        description = "Local vision-language model config for picture description (JSON object)"
+        description = "Local vision-language model config for picture description"
     )
-    String pictureDescriptionLocal,
+    PictureDescriptionLocal pictureDescriptionLocal,
 
     @JsonProperty("picture_description_api")
     @Schema(
-        description = "API details for vision-language model in picture description (JSON object)"
+        description = "API details for vision-language model in picture description"
     )
-    String pictureDescriptionApi,
+    PictureDescriptionApi pictureDescriptionApi,
 
     // ==================== VLM Pipeline ====================
 
@@ -218,7 +219,7 @@ public record DoclingOptions(
     @Schema(
         description = "Preset local/API models for VLM pipeline"
     )
-    String vlmPipelineModel,
+    VlmModelType vlmPipelineModel,
 
     @JsonProperty("vlm_pipeline_model_local")
     @Schema(

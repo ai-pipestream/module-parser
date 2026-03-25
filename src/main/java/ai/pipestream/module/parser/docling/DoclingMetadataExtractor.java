@@ -6,6 +6,7 @@ import ai.docling.serve.api.convert.request.options.*;
 import ai.docling.serve.api.convert.request.source.FileSource;
 import ai.docling.serve.api.convert.response.ConvertDocumentResponse;
 import ai.docling.serve.api.convert.response.DocumentResponse;
+import ai.docling.serve.api.convert.response.InBodyConvertDocumentResponse;
 import ai.pipestream.module.parser.config.DoclingOptions;
 import ai.pipestream.parsed.data.docling.v1.DoclingDocument;
 import ai.pipestream.parsed.data.docling.v1.DoclingParseMetadata;
@@ -91,7 +92,18 @@ public class DoclingMetadataExtractor {
             ConvertDocumentResponse doclingResponse = doclingServeApi.convertSource(request);
 
             // Map ConvertDocumentResponse to DoclingResponse proto
-            mapDoclingResponse(doclingResponse, responseBuilder, docId, startTime);
+            if (doclingResponse instanceof InBodyConvertDocumentResponse inBodyResponse) {
+                mapDoclingResponse(inBodyResponse, responseBuilder, docId, startTime);
+            } else {
+                String errorMsg = String.format("Unsupported or unexpected Docling response type: %s", 
+                    doclingResponse != null ? doclingResponse.getClass().getName() : "null");
+                LOG.error(errorMsg);
+                
+                DoclingParseStatus.Builder statusBuilder = DoclingParseStatus.newBuilder()
+                    .setStatus(DoclingParseStatus.Status.STATUS_FAILED)
+                    .addErrors(errorMsg);
+                responseBuilder.setStatus(statusBuilder.build());
+            }
 
         } catch (Exception e) {
             LOG.errorf(e, "Failed to extract Docling metadata for document %s", docId);
@@ -210,8 +222,21 @@ public class DoclingMetadataExtractor {
         if (options.pictureDescriptionAreaThreshold() != null) {
             builder.pictureDescriptionAreaThreshold(options.pictureDescriptionAreaThreshold());
         }
-        // Note: pictureDescriptionLocal, pictureDescriptionApi, vlm fields are complex objects
-        // For now, we'll skip them until we need them (they require parsing JSON strings)
+        if (options.pictureDescriptionLocal() != null) {
+            builder.pictureDescriptionLocal(options.pictureDescriptionLocal());
+        }
+        if (options.pictureDescriptionApi() != null) {
+            builder.pictureDescriptionApi(options.pictureDescriptionApi());
+        }
+        if (options.vlmPipelineModel() != null) {
+            builder.vlmPipelineModel(options.vlmPipelineModel());
+        }
+        if (options.vlmPipelineModelLocal() != null) {
+            builder.vlmPipelineModelLocal(options.vlmPipelineModelLocal());
+        }
+        if (options.vlmPipelineModelApi() != null) {
+            builder.vlmPipelineModelApi(options.vlmPipelineModelApi());
+        }
 
         return builder.build();
     }
@@ -219,10 +244,10 @@ public class DoclingMetadataExtractor {
     // ==================== Response Mapping ====================
 
     /**
-     * Maps ConvertDocumentResponse from Docling Java API to DoclingResponse proto.
+     * Maps InBodyConvertDocumentResponse from Docling Java API to DoclingResponse proto.
      */
     private void mapDoclingResponse(
-            ConvertDocumentResponse doclingResponse,
+            InBodyConvertDocumentResponse doclingResponse,
             DoclingResponse.Builder responseBuilder,
             String docId,
             long startTime) throws Exception {

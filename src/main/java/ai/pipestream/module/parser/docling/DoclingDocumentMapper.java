@@ -56,6 +56,11 @@ public class DoclingDocumentMapper {
             builder.setBody(mapGroupItem(javaDoc.getBody()));
         }
 
+        // Map furniture (GroupItem)
+        if (javaDoc.getFurniture() != null) {
+            builder.setFurniture(mapGroupItem(javaDoc.getFurniture()));
+        }
+
         // Map groups
         if (javaDoc.getGroups() != null) {
             javaDoc.getGroups().forEach(group -> builder.addGroups(mapGroupItem(group)));
@@ -133,12 +138,29 @@ public class DoclingDocumentMapper {
         if (javaGroup.getLabel() != null) {
             builder.setLabel(mapGroupLabel(javaGroup.getLabel()));
         }
+        if (javaGroup.getContentLayer() != null) {
+            builder.setContentLayer(mapContentLayer(javaGroup.getContentLayer()));
+        }
+        if (javaGroup.getMeta() != null) {
+            builder.setMeta(mapBaseMeta(javaGroup.getMeta()));
+        }
+
+        return builder.build();
+    }
+
+    private static BaseMeta mapBaseMeta(DoclingDocument.BaseMeta javaMeta) {
+        BaseMeta.Builder builder = BaseMeta.newBuilder();
+
+        if (javaMeta.getSummary() != null) {
+            builder.setSummary(mapSummaryMetaField(javaMeta.getSummary()));
+        }
 
         return builder.build();
     }
 
     private static GroupLabel mapGroupLabel(DoclingDocument.GroupLabel javaLabel) {
         return switch (javaLabel) {
+            case UNSPECIFIED -> GroupLabel.GROUP_LABEL_UNSPECIFIED;
             case LIST -> GroupLabel.GROUP_LABEL_LIST;
             case ORDERED_LIST -> GroupLabel.GROUP_LABEL_ORDERED_LIST;
             case CHAPTER -> GroupLabel.GROUP_LABEL_CHAPTER;
@@ -222,7 +244,7 @@ public class DoclingDocumentMapper {
         TitleItem.Builder builder = TitleItem.newBuilder();
 
         // Map TextItemBase fields
-        builder.setBase(mapTextItemBase(javaTitle));
+        builder.setBase(mapTextItemBase(javaTitle, javaTitle.getMeta()));
 
         return builder.build();
     }
@@ -231,7 +253,7 @@ public class DoclingDocumentMapper {
         SectionHeaderItem.Builder builder = SectionHeaderItem.newBuilder();
 
         // Map TextItemBase fields
-        builder.setBase(mapTextItemBase(javaSection));
+        builder.setBase(mapTextItemBase(javaSection, javaSection.getMeta()));
 
         // Map level field specific to section headers
         if (javaSection.getLevel() != null) {
@@ -245,7 +267,7 @@ public class DoclingDocumentMapper {
         ListItem.Builder builder = ListItem.newBuilder();
 
         // Map TextItemBase fields
-        builder.setBase(mapTextItemBase(javaList));
+        builder.setBase(mapTextItemBase(javaList, javaList.getMeta()));
 
         // Map list-specific fields
         builder.setEnumerated(javaList.isEnumerated());
@@ -260,11 +282,16 @@ public class DoclingDocumentMapper {
         CodeItem.Builder builder = CodeItem.newBuilder();
 
         // Map TextItemBase fields
-        builder.setBase(mapTextItemBase(javaCode));
+        builder.setBase(mapTextItemBase(javaCode, null));
 
         // Map code-specific fields
         if (javaCode.getCodeLanguage() != null) {
             builder.setCodeLanguage(javaCode.getCodeLanguage());
+        }
+
+        // Map meta
+        if (javaCode.getMeta() != null) {
+            builder.setMeta(mapFloatingMeta(javaCode.getMeta()));
         }
 
         // Map additional code item fields
@@ -288,7 +315,7 @@ public class DoclingDocumentMapper {
         FormulaItem.Builder builder = FormulaItem.newBuilder();
 
         // Map TextItemBase fields
-        builder.setBase(mapTextItemBase(javaFormula));
+        builder.setBase(mapTextItemBase(javaFormula, javaFormula.getMeta()));
 
         return builder.build();
     }
@@ -297,12 +324,12 @@ public class DoclingDocumentMapper {
         TextItem.Builder builder = TextItem.newBuilder();
 
         // Map TextItemBase fields
-        builder.setBase(mapTextItemBase(javaText));
+        builder.setBase(mapTextItemBase(javaText, javaText.getMeta()));
 
         return builder.build();
     }
 
-    private static TextItemBase mapTextItemBase(DoclingDocument.BaseTextItem javaItem) {
+    private static TextItemBase mapTextItemBase(DoclingDocument.BaseTextItem javaItem, DoclingDocument.BaseMeta javaMeta) {
         TextItemBase.Builder builder = TextItemBase.newBuilder();
 
         if (javaItem.getSelfRef() != null) {
@@ -323,6 +350,11 @@ public class DoclingDocumentMapper {
         // Map label enum
         if (javaItem.getLabel() != null) {
             builder.setLabel(mapDocItemLabel(javaItem.getLabel()));
+        }
+
+        // Map meta
+        if (javaMeta != null) {
+            builder.setMeta(mapBaseMeta(javaMeta));
         }
 
         // Map provenance items
@@ -659,9 +691,16 @@ public class DoclingDocumentMapper {
     private static TableData mapTableData(DoclingDocument.TableData javaTableData) {
         TableData.Builder builder = TableData.newBuilder();
 
-        // Skip table_cells for now - it's List<Object> which is polymorphic
-        // The structured data is in grid which we map below
-        // TODO: Handle table_cells polymorphism if needed
+        if (javaTableData.getTableCells() != null) {
+            javaTableData.getTableCells().forEach(cellObj -> {
+                if (cellObj instanceof DoclingDocument.TableCell javaCell) {
+                    builder.addTableCells(mapTableCell(javaCell));
+                } else {
+                    LOG.warnf("Unsupported table cell type: %s", 
+                        cellObj != null ? cellObj.getClass().getName() : "null");
+                }
+            });
+        }
 
         if (javaTableData.getNumRows() != null) {
             builder.setNumRows(javaTableData.getNumRows());
@@ -735,7 +774,9 @@ public class DoclingDocumentMapper {
         if (javaBbox.getB() != null) {
             builder.setB(javaBbox.getB());
         }
-        // No coord field in Java BoundingBox
+        if (javaBbox.getCoordOrigin() != null) {
+            builder.setCoordOrigin(javaBbox.getCoordOrigin());
+        }
 
         return builder.build();
     }
@@ -898,6 +939,7 @@ public class DoclingDocumentMapper {
 
     private static GraphCellLabel mapGraphCellLabel(DoclingDocument.GraphCellLabel javaLabel) {
         return switch (javaLabel) {
+            case UNSPECIFIED -> GraphCellLabel.GRAPH_CELL_LABEL_UNSPECIFIED;
             case KEY -> GraphCellLabel.GRAPH_CELL_LABEL_KEY;
             case VALUE -> GraphCellLabel.GRAPH_CELL_LABEL_VALUE;
             case CHECKBOX -> GraphCellLabel.GRAPH_CELL_LABEL_CHECKBOX;
@@ -923,6 +965,7 @@ public class DoclingDocumentMapper {
 
     private static GraphLinkLabel mapGraphLinkLabel(DoclingDocument.GraphLinkLabel javaLabel) {
         return switch (javaLabel) {
+            case UNSPECIFIED -> GraphLinkLabel.GRAPH_LINK_LABEL_UNSPECIFIED;
             case TO_VALUE -> GraphLinkLabel.GRAPH_LINK_LABEL_TO_VALUE;
             case TO_KEY -> GraphLinkLabel.GRAPH_LINK_LABEL_TO_KEY;
             case TO_PARENT -> GraphLinkLabel.GRAPH_LINK_LABEL_TO_PARENT;

@@ -4,6 +4,7 @@ import com.google.protobuf.Any;
 import com.google.protobuf.Struct;
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
@@ -49,7 +50,7 @@ public class OfficeFieldCoverageTest {
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config)
                         .onItem().invoke(resp -> {
                             processed.incrementAndGet();
-                            if (!resp.getSuccess() || !resp.hasOutputDoc()) return;
+                            if (resp.getOutcome() != ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS || !resp.hasOutputDoc()) return;
                             PipeDoc out = resp.getOutputDoc();
                             if (!out.getParsedMetadataMap().containsKey("tika")) return;
                             Any any = out.getParsedMetadataMap().get("tika").getData();

@@ -8,6 +8,7 @@ import ai.pipestream.data.v1.SearchMetadata;
 import ai.pipestream.data.v1.BlobBag;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.*;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.v1.LogEntry;
 import io.smallrye.mutiny.helpers.test.UniAssertSubscriber;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ public abstract class ParserServiceTestBase {
                 .getItem();
 
         // Verify successful processing
-        assertThat("Parser should successfully process text document", response.getSuccess(), is(true));
+        assertThat("Parser should successfully process text document", response.getOutcome(), is(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS));
         assertThat("Response should contain output document", response.hasOutputDoc(), is(true));
 
         PipeDoc outputDoc = response.getOutputDoc();
@@ -72,7 +73,7 @@ public abstract class ParserServiceTestBase {
                 .awaitItem()
                 .getItem();
 
-        assertThat("Parser should successfully extract metadata", response.getSuccess(), is(true));
+        assertThat("Parser should successfully extract metadata", response.getOutcome(), is(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS));
         PipeDoc outputDoc = response.getOutputDoc();
         assertThat("Document should have parsed metadata from Tika",
                 outputDoc.getParsedMetadataMap().containsKey("tika"), is(true));
@@ -93,7 +94,7 @@ public abstract class ParserServiceTestBase {
                 .awaitItem()
                 .getItem();
 
-        assertThat("Parser should handle empty documents gracefully", response.getSuccess(), is(true));
+        assertThat("Parser should handle empty documents gracefully", response.getOutcome(), is(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS));
         assertThat("Response should contain output document", response.hasOutputDoc(), is(true));
 
         PipeDoc outputDoc = response.getOutputDoc();
@@ -122,7 +123,7 @@ public abstract class ParserServiceTestBase {
                 .awaitItem()
                 .getItem();
 
-        assertThat("Parser should handle documents without blob data", response.getSuccess(), is(true));
+        assertThat("Parser should handle documents without blob data", response.getOutcome(), is(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS));
         assertThat("Response should contain output document", response.hasOutputDoc(), is(true));
         assertThat("Processing logs should indicate no blob data",
                 logMessages(response), hasItem(containsString("No blob data present")));
@@ -140,7 +141,7 @@ public abstract class ParserServiceTestBase {
                 .awaitItem()
                 .getItem();
 
-        assertThat("Parser should handle requests without documents", response.getSuccess(), is(true));
+        assertThat("Parser should handle requests without documents", response.getOutcome(), is(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS));
         assertThat("Response should not contain output document", response.hasOutputDoc(), is(false));
         assertThat("Processing logs should indicate no document",
                 logMessages(response), hasItem(containsString("no document")));
@@ -172,7 +173,7 @@ public abstract class ParserServiceTestBase {
                     .getItem();
 
             assertThat(String.format("Parser should handle %s documents", mimeTypes[i]),
-                    response.getSuccess(), is(true));
+                    response.getOutcome(), is(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS));
             assertThat(String.format("Response should contain parsed %s content", mimeTypes[i]),
                     response.hasOutputDoc(), is(true));
 

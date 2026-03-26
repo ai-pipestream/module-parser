@@ -2,6 +2,7 @@ package ai.pipestream.module.parser.pdf;
 
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
@@ -44,7 +45,7 @@ public class PdfGrpcIntegrationTest {
         ReactiveTestDocumentLoader.streamTestDocuments("pdf")
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config)
                         .onItem().invoke(resp -> {
-                            if (resp.getSuccess() && resp.hasOutputDoc()) {
+                            if (resp.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS && resp.hasOutputDoc()) {
                                 tracker.recordSuccess();
                                 var out = resp.getOutputDoc();
                                 var search = out.getSearchMetadata();
@@ -96,7 +97,7 @@ public class PdfGrpcIntegrationTest {
                 .await().atMost(Duration.ofSeconds(30));
 
         assertThat("Should have processed simple.pdf", response, notNullValue());
-        assertThat(response.getSuccess(), is(true));
+        assertThat(response.getOutcome(), is(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS));
         assertThat(response.hasOutputDoc(), is(true));
         PipeDoc out = response.getOutputDoc();
         // Body may be empty for some PDFs; don't require > 10 chars

@@ -3,6 +3,7 @@ package ai.pipestream.module.parser.font;
 import com.google.protobuf.Any;
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
@@ -46,12 +47,12 @@ public class FontGrpcIntegrationTest {
                 .await().atMost(Duration.ofMinutes(1));
 
         assertThat("Should process at least one font", results.size(), greaterThan(0));
-        long successes = results.stream().filter(ProcessDataResponse::getSuccess).count();
+        long successes = results.stream().filter(r -> r.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS).count();
         assertThat("Most font files should parse successfully", successes, greaterThanOrEqualTo(1L));
 
         boolean foundTyped = false;
         for (ProcessDataResponse resp : results) {
-            if (!resp.getSuccess() || !resp.hasOutputDoc()) continue;
+            if (resp.getOutcome() != ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS || !resp.hasOutputDoc()) continue;
             PipeDoc out = resp.getOutputDoc();
             assertThat("structured_data should be present", out.getParsedMetadataMap().containsKey("tika"), is(true));
             Any any = out.getParsedMetadataMap().get("tika").getData();

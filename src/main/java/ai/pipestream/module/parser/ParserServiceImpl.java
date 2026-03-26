@@ -81,7 +81,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
 
         if (!request.hasDocument()) {
             return Uni.createFrom().item(ProcessDataResponse.newBuilder()
-                    .setSuccess(true)
+                    .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS)
                     .addLogEntries(moduleLog("Parser service received request with no document", LogLevel.LOG_LEVEL_INFO))
                     .build());
         }
@@ -112,7 +112,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
 
         if (!hasContent) {
              return Uni.createFrom().item(ProcessDataResponse.newBuilder()
-                    .setSuccess(true)
+                    .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS)
                     .setOutputDoc(request.getDocument())
                     .addLogEntries(moduleLog("No blob data present — document " + docId + " passed through without parsing", LogLevel.LOG_LEVEL_INFO))
                     .build());
@@ -204,7 +204,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                             ? outputDoc.getSearchMetadata().getTitle() : "(none)";
 
                     ProcessDataResponse.Builder respBuilder = ProcessDataResponse.newBuilder()
-                            .setSuccess(true)
+                            .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS)
                             .setOutputDoc(outputDoc);
 
                     respBuilder.addLogEntries(moduleLog(String.format(
@@ -247,7 +247,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
         .onFailure().recoverWithItem(t -> {
             LOG.error("Error parsing document: " + t.getMessage(), t);
             return ProcessDataResponse.newBuilder()
-                    .setSuccess(false)
+                    .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_FAILURE)
                     .addLogEntries(moduleLog("Parser service failed: " + t.getMessage(), LogLevel.LOG_LEVEL_ERROR))
                     .build();
         });
@@ -394,7 +394,7 @@ public class ParserServiceImpl implements PipeStepProcessorService {
         if (request.hasTestRequest()) {
             return processData(request.getTestRequest())
                 .map(processResponse -> {
-                    if (processResponse.getSuccess()) {
+                    if (processResponse.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS) {
                         responseBuilder
                             .setHealthCheckPassed(true)
                             .setHealthCheckMessage("Parser module is healthy");

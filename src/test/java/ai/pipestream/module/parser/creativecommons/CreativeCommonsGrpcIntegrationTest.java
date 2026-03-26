@@ -3,6 +3,7 @@ package ai.pipestream.module.parser.creativecommons;
 import com.google.protobuf.Any;
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
@@ -48,7 +49,7 @@ public class CreativeCommonsGrpcIntegrationTest {
         assertThat("Should process at least one file", results.size(), greaterThan(0));
         boolean foundCC = false;
         for (ProcessDataResponse resp : results) {
-            if (!resp.getSuccess() || !resp.hasOutputDoc()) continue;
+            if (resp.getOutcome() != ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS || !resp.hasOutputDoc()) continue;
             PipeDoc out = resp.getOutputDoc();
             assertThat("structured_data should be present", out.getParsedMetadataMap().containsKey("tika"), is(true));
             Any any = out.getParsedMetadataMap().get("tika").getData();

@@ -2,6 +2,7 @@ package ai.pipestream.module.parser.comprehensive;
 
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
@@ -69,7 +70,7 @@ public class ParserMetadataAnalysisTest {
                     .onItem().invoke(response -> {
                         totalDocs.incrementAndGet();
                         
-                        if (!response.getSuccess() || !response.hasOutputDoc()) {
+                        if (response.getOutcome() != ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS || !response.hasOutputDoc()) {
                             parserFailures.incrementAndGet();
                             LOG.warnf("Parser failed for: %s", 
                                 testDoc.hasBlobBag() && testDoc.getBlobBag().hasBlob() ? 
@@ -133,7 +134,7 @@ public class ParserMetadataAnalysisTest {
                         LOG.errorf(error, "Error processing document");
                     })
                     .onFailure().recoverWithItem(ProcessDataResponse.newBuilder()
-                            .setSuccess(false)
+                            .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_FAILURE)
                             .build());
             })
             .collect().asList()
@@ -227,7 +228,7 @@ public class ParserMetadataAnalysisTest {
                     .onItem().invoke(response -> {
                         total.incrementAndGet();
                         
-                        if (response.getSuccess() && response.hasOutputDoc()) {
+                        if (response.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS && response.hasOutputDoc()) {
                             var searchMeta = response.getOutputDoc().getSearchMetadata();
                             boolean hasContent = (searchMeta.hasBody() && !searchMeta.getBody().isEmpty()) ||
                                                (searchMeta.hasTitle() && !searchMeta.getTitle().isEmpty());
@@ -248,7 +249,7 @@ public class ParserMetadataAnalysisTest {
                         }
                     })
                     .onFailure().recoverWithItem(ProcessDataResponse.newBuilder()
-                            .setSuccess(false)
+                            .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_FAILURE)
                             .build());
             })
             .collect().asList()

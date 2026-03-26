@@ -2,6 +2,7 @@ package ai.pipestream.module.parser.markdown;
 
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
@@ -43,14 +44,14 @@ public class MarkdownGrpcIntegrationTest {
                 .await().atMost(Duration.ofMinutes(1));
 
         assertThat("Should process at least one Markdown", results.size(), greaterThan(0));
-        long successes = results.stream().filter(ProcessDataResponse::getSuccess).count();
+        long successes = results.stream().filter(r -> r.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS).count();
         assertThat("Most Markdown files should parse successfully", successes, greaterThanOrEqualTo(1L));
 
         boolean bodyOk = false;
         boolean outlineOk = false;
         boolean linksOk = false;
         for (ProcessDataResponse resp : results) {
-            if (!resp.getSuccess() || !resp.hasOutputDoc()) continue;
+            if (resp.getOutcome() != ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS || !resp.hasOutputDoc()) continue;
             PipeDoc out = resp.getOutputDoc();
             if (!out.getSearchMetadata().getBody().isEmpty()) bodyOk = true;
             if (out.getSearchMetadata().hasDocOutline()) outlineOk = true;

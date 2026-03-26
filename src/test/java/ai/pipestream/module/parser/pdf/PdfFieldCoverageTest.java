@@ -5,6 +5,7 @@ import com.google.protobuf.Struct;
 import com.google.protobuf.Descriptors.FieldDescriptor;
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
@@ -52,7 +53,7 @@ public class PdfFieldCoverageTest {
                 .onItem().transformToUniAndConcatenate(doc -> processDoc(doc, config)
                         .onItem().invoke(resp -> {
                             docsParsed.incrementAndGet();
-                            if (!resp.getSuccess() || !resp.hasOutputDoc()) {
+                            if (resp.getOutcome() != ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS || !resp.hasOutputDoc()) {
                                 LOG.warnf("Failed to process: %s", resp.getLogEntriesList().stream().map(ai.pipestream.data.v1.LogEntry::getMessage).toList());
                                 return;
                             }

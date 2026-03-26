@@ -4,6 +4,7 @@ import com.google.protobuf.Struct;
 import com.google.protobuf.util.JsonFormat;
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
@@ -102,7 +103,7 @@ public class EnhancedParsingTest {
                     .onItem().invoke(response -> {
                         totalDocs.incrementAndGet();
                         
-                        if (response.getSuccess() && response.hasOutputDoc()) {
+                        if (response.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS && response.hasOutputDoc()) {
                             PipeDoc outputDoc = response.getOutputDoc();
                             var searchMeta = outputDoc.getSearchMetadata();
                             
@@ -136,7 +137,7 @@ public class EnhancedParsingTest {
                         }
                     })
                     .onFailure().recoverWithItem(ProcessDataResponse.newBuilder()
-                            .setSuccess(false)
+                            .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_FAILURE)
                             .build());
             })
             .collect().asList()
@@ -211,7 +212,7 @@ public class EnhancedParsingTest {
                     .onItem().invoke(response -> {
                         totalDocs.incrementAndGet();
                         
-                        if (response.getSuccess() && response.hasOutputDoc()) {
+                        if (response.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS && response.hasOutputDoc()) {
                             var searchMeta = response.getOutputDoc().getSearchMetadata();
                             if ((searchMeta.hasBody() && !searchMeta.getBody().isEmpty()) ||
                                 (searchMeta.hasTitle() && !searchMeta.getTitle().isEmpty())) {
@@ -220,7 +221,7 @@ public class EnhancedParsingTest {
                         }
                     })
                     .onFailure().recoverWithItem(ProcessDataResponse.newBuilder()
-                            .setSuccess(false)
+                            .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_FAILURE)
                             .build());
             })
             .collect().asList()

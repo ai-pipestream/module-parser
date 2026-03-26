@@ -2,6 +2,7 @@ package ai.pipestream.module.parser.comprehensive;
 
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
@@ -104,7 +105,7 @@ public class SourceDocumentProcessingTestRefactored {
                     .onItem().invoke(response -> {
                         totalProcessed.incrementAndGet();
                         
-                        if (response.getSuccess() && response.hasOutputDoc()) {
+                        if (response.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS && response.hasOutputDoc()) {
                             tracker.recordSuccess();
                             categorySuccess.incrementAndGet();
                             
@@ -168,7 +169,7 @@ public class SourceDocumentProcessingTestRefactored {
                     .onFailure().recoverWithItem(response -> 
                         // Return a failed response on error to continue processing
                         ProcessDataResponse.newBuilder()
-                            .setSuccess(false)
+                            .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_FAILURE)
                             .build()
                     );
             })
@@ -268,7 +269,7 @@ public class SourceDocumentProcessingTestRefactored {
                 
                 return parserService.processData(request)
                     .onItem().invoke(response -> {
-                        if (response.getSuccess()) {
+                        if (response.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS) {
                             tracker.recordSuccess();
                             
                             if (response.hasOutputDoc()) {
@@ -286,7 +287,7 @@ public class SourceDocumentProcessingTestRefactored {
                     })
                     .onFailure().invoke(error -> tracker.recordFailure())
                     .onFailure().recoverWithItem(ProcessDataResponse.newBuilder()
-                            .setSuccess(false)
+                            .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_FAILURE)
                             .build());
             })
             .collect().asList()

@@ -3,6 +3,7 @@ package ai.pipestream.module.parser.pdf;
 import com.google.protobuf.ByteString;
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
@@ -69,7 +70,7 @@ public class PdfOutlineGeneratedIntegrationTest {
                 .build();
 
         ProcessDataResponse resp = parserService.processData(req).await().atMost(Duration.ofSeconds(20));
-        assertThat(resp.getSuccess(), is(true));
+        assertThat(resp.getOutcome(), is(ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS));
         assertThat(resp.hasOutputDoc(), is(true));
         PipeDoc out = resp.getOutputDoc();
         assertThat("doc_outline should be populated", out.getSearchMetadata().hasDocOutline(), is(true));

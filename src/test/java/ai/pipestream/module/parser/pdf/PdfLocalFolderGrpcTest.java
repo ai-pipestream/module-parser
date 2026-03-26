@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.Any;
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
@@ -54,7 +55,7 @@ public class PdfLocalFolderGrpcTest {
                 ProcessDataResponse resp = processPath(p, config)
                         .await().atMost(Duration.ofSeconds(20));
                 assertThat("gRPC call should return a response", resp, notNullValue());
-                if (resp.getSuccess() && resp.hasOutputDoc()) {
+                if (resp.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS && resp.hasOutputDoc()) {
                     successes++;
                     PipeDoc out = resp.getOutputDoc();
                     assertThat("structured_data should exist", out.getParsedMetadataMap().containsKey("tika"), is(true));

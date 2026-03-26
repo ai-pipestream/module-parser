@@ -2,6 +2,7 @@ package ai.pipestream.module.parser.comprehensive;
 
 import ai.pipestream.data.module.v1.ProcessDataRequest;
 import ai.pipestream.data.module.v1.ProcessDataResponse;
+import ai.pipestream.data.module.v1.ProcessingOutcome;
 import ai.pipestream.data.v1.ProcessConfiguration;
 import ai.pipestream.data.module.v1.ServiceMetadata;
 import ai.pipestream.data.module.v1.PipeStepProcessorService;
@@ -79,7 +80,7 @@ public class ParserServiceComprehensiveTestRefactored {
                 // Process through parser and handle result
                 return parserService.processData(request)
                     .onItem().invoke(response -> {
-                        if (response.getSuccess() && response.hasOutputDoc()) {
+                        if (response.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS && response.hasOutputDoc()) {
                             tracker.recordSuccess();
                             
                             PipeDoc resultDoc = response.getOutputDoc();
@@ -119,7 +120,7 @@ public class ParserServiceComprehensiveTestRefactored {
                     .onFailure().recoverWithItem(response -> 
                         // Return a failed response on error to continue processing
                         ProcessDataResponse.newBuilder()
-                            .setSuccess(false)
+                            .setOutcome(ProcessingOutcome.PROCESSING_OUTCOME_FAILURE)
                             .build()
                     );
             })
@@ -184,7 +185,7 @@ public class ParserServiceComprehensiveTestRefactored {
                 
                 return parserService.processData(request)
                     .onItem().invoke(response -> {
-                        if (response.getSuccess()) {
+                        if (response.getOutcome() == ProcessingOutcome.PROCESSING_OUTCOME_SUCCESS) {
                             tracker.recordSuccess();
                             
                             // Text files should have extractable content

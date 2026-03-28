@@ -5,9 +5,9 @@ export default defineConfig({
   plugins: [vue()],
   base: '/modules/parser/admin/',
   server: {
-    port: 5173,
+    host: 'localhost',
+    port: 5178,
     strictPort: true,
-    allowedHosts: true,
   },
   build: {
     outDir: 'dist',

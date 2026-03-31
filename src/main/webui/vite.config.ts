@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
-  base: '/modules/parser/admin/',
+  base: '/admin/',
   server: {
     host: 'localhost',
     port: 5178,

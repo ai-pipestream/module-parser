@@ -60,9 +60,14 @@ public class PdfMetadataBuilder {
         builder.setBaseFields(baseFields);
         
         PdfMetadata result = builder.build();
-        LOG.debugf("Built PDF metadata with %d strongly-typed fields, %d additional fields", 
+        LOG.debugf("Built PDF metadata with %d strongly-typed fields, %d additional fields",
                   mappedFields.size(), additionalMetadata.getFieldsCount());
-        
+        if (additionalMetadata.getFieldsCount() > 0) {
+            LOG.infof("PDF additional_metadata keys (should be empty for mapped fields): %s",
+                    additionalMetadata.getFieldsMap().keySet());
+        }
+        LOG.debugf("PDF mapped field keys: %s", mappedFields);
+
         return result;
     }
     

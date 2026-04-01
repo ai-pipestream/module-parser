@@ -19,9 +19,9 @@ public final class EpubMetadataBuilder {
 
     private EpubMetadataBuilder() {}
 
-    public static EpubMetadata build(Metadata metadata, String parserClass, String tikaVersion) {
+    public static EpubMetadata build(Metadata metadata, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         EpubMetadata.Builder builder = EpubMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         // Core EPUB properties
         MetadataUtils.mapStringField(metadata, Epub.RENDITION_LAYOUT, builder::setRenditionLayout, mapped);

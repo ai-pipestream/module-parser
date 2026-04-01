@@ -20,9 +20,9 @@ public final class DatabaseMetadataBuilder {
 
     private DatabaseMetadataBuilder() {}
 
-    public static DatabaseMetadata build(Metadata md, String parserClass, String tikaVersion) {
+    public static DatabaseMetadata build(Metadata md, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         DatabaseMetadata.Builder builder = DatabaseMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         // Core document fields
         mapCore(md, builder, mapped);

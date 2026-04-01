@@ -18,9 +18,9 @@ import java.util.Set;
  */
 public class RtfMetadataBuilder {
 
-    public static RtfMetadata build(Metadata tikaMetadata, String parserClass, String tikaVersion) {
+    public static RtfMetadata build(Metadata tikaMetadata, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         RtfMetadata.Builder builder = RtfMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         mapOfficeLikeFields(tikaMetadata, builder, mapped);
         mapRtfSpecificFields(tikaMetadata, builder, mapped);

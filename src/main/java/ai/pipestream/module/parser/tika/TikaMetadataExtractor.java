@@ -20,6 +20,9 @@ import ai.pipestream.shaded.tika.metadata.Metadata;
 import ai.pipestream.shaded.tika.metadata.DublinCore;
 import org.jboss.logging.Logger;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * Main orchestrator for extracting comprehensive metadata from Tika Metadata objects.
  * 
@@ -86,68 +89,76 @@ public class TikaMetadataExtractor {
         responseBuilder.setContent(contentBuilder.build());
         
         // Build Dublin Core metadata (common to all document types)
-        DublinCoreMetadata dublinCore = buildDublinCoreMetadata(tikaMetadata);
+        // Collect consumed keys so document-type builders can exclude them from additional_metadata
+        Set<String> dublinCoreKeys = new HashSet<>();
+        DublinCoreMetadata dublinCore = buildDublinCoreMetadata(tikaMetadata, dublinCoreKeys);
         responseBuilder.setDublinCore(dublinCore);
-        
+
+        // Also exclude XMP-sourced Dublin Core duplicates and x-default variants
+        collectDublinCoreRelatedKeys(tikaMetadata, dublinCoreKeys);
+
+        // Exclude Tika internal fields common to all document types
+        collectTikaInternalKeys(tikaMetadata, dublinCoreKeys);
+
         // Get Tika version
         String tikaVersion = MetadataUtils.getTikaVersion();
-        
+
         // Route to appropriate metadata builder based on document type
         switch (docType) {
             case PDF:
-                responseBuilder.setPdf(PdfMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setPdf(PdfMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
                 
             case OFFICE:
-                responseBuilder.setOffice(OfficeMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setOffice(OfficeMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case IMAGE:
-                responseBuilder.setImage(ImageMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setImage(ImageMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case EMAIL:
-                responseBuilder.setEmail(EmailMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setEmail(EmailMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case MEDIA:
-                responseBuilder.setMedia(MediaMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setMedia(MediaMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case HTML:
-                responseBuilder.setHtml(HtmlMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setHtml(HtmlMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case RTF:
-                responseBuilder.setRtf(RtfMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setRtf(RtfMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case DATABASE:
                 responseBuilder.setDatabase(ai.pipestream.module.parser.tika.builders.DatabaseMetadataBuilder
-                        .build(tikaMetadata, parserClass, tikaVersion));
+                        .build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case FONT:
-                responseBuilder.setFont(FontMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setFont(FontMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case EPUB:
-                responseBuilder.setEpub(EpubMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setEpub(EpubMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case WARC:
-                responseBuilder.setWarc(WarcMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setWarc(WarcMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case CLIMATE_FORECAST:
                 responseBuilder.setClimateForecast(ai.pipestream.module.parser.tika.builders.ClimateForecastMetadataBuilder
-                        .build(tikaMetadata, parserClass, tikaVersion));
+                        .build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case CREATIVE_COMMONS:
-                responseBuilder.setCreativeCommons(CreativeCommonsMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                responseBuilder.setCreativeCommons(CreativeCommonsMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 break;
-                
+
             case GENERIC:
             default:
                 responseBuilder.setGeneric(buildGenericMetadata(tikaMetadata, parserClass, tikaVersion));
@@ -158,7 +169,7 @@ public class TikaMetadataExtractor {
         try {
             if (DocumentTypeDetector.detect(tikaMetadata) != DocumentTypeDetector.DocumentType.CREATIVE_COMMONS) {
                 if (hasXmpRights(tikaMetadata)) {
-                    responseBuilder.setCreativeCommons(CreativeCommonsMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion));
+                    responseBuilder.setCreativeCommons(CreativeCommonsMetadataBuilder.build(tikaMetadata, parserClass, tikaVersion, dublinCoreKeys));
                 }
             }
         } catch (Exception ignored) {}
@@ -183,97 +194,143 @@ public class TikaMetadataExtractor {
     
     /**
      * Builds Dublin Core metadata from Tika metadata.
+     * Populates consumedKeys with the Tika metadata key names that were consumed,
+     * so document-type builders can exclude them from additional_metadata.
      */
-    private static DublinCoreMetadata buildDublinCoreMetadata(Metadata tikaMetadata) {
+    private static DublinCoreMetadata buildDublinCoreMetadata(Metadata tikaMetadata, Set<String> consumedKeys) {
         DublinCoreMetadata.Builder builder = DublinCoreMetadata.newBuilder();
-        
-        // Map Dublin Core fields
-        String title = tikaMetadata.get(DublinCore.TITLE);
-        if (title != null && !title.trim().isEmpty()) {
-            builder.setTitle(title.trim());
+
+        mapDcField(tikaMetadata, DublinCore.TITLE, builder::setTitle, consumedKeys);
+        mapDcRepeatedField(tikaMetadata, DublinCore.CREATOR, builder::addCreators, consumedKeys);
+        mapDcRepeatedField(tikaMetadata, DublinCore.SUBJECT, builder::addSubjects, consumedKeys);
+        mapDcField(tikaMetadata, DublinCore.DESCRIPTION, builder::setDescription, consumedKeys);
+        mapDcField(tikaMetadata, DublinCore.PUBLISHER, builder::setPublisher, consumedKeys);
+        mapDcRepeatedField(tikaMetadata, DublinCore.CONTRIBUTOR, builder::addContributors, consumedKeys);
+        mapDcField(tikaMetadata, DublinCore.TYPE, builder::setType, consumedKeys);
+        mapDcField(tikaMetadata, DublinCore.FORMAT, builder::setFormat, consumedKeys);
+        mapDcField(tikaMetadata, DublinCore.IDENTIFIER, builder::setIdentifier, consumedKeys);
+        mapDcField(tikaMetadata, DublinCore.SOURCE, builder::setSource, consumedKeys);
+        mapDcField(tikaMetadata, DublinCore.LANGUAGE, builder::setLanguage, consumedKeys);
+        mapDcField(tikaMetadata, DublinCore.RELATION, builder::setRelation, consumedKeys);
+        mapDcField(tikaMetadata, DublinCore.COVERAGE, builder::setCoverage, consumedKeys);
+        mapDcField(tikaMetadata, DublinCore.RIGHTS, builder::setRights, consumedKeys);
+
+        // Date fields
+        try {
+            java.util.Date created = tikaMetadata.getDate(DublinCore.CREATED);
+            if (created != null) {
+                builder.setCreated(toTimestamp(created));
+                consumedKeys.add(DublinCore.CREATED.getName());
+            }
+        } catch (Exception e) {
+            LOG.debugf("Could not parse Dublin Core created date: %s", e.getMessage());
         }
-        
-        String creator = tikaMetadata.get(DublinCore.CREATOR);
-        if (creator != null && !creator.trim().isEmpty()) {
-            builder.addCreators(creator.trim());
+
+        try {
+            java.util.Date modified = tikaMetadata.getDate(DublinCore.MODIFIED);
+            if (modified != null) {
+                builder.setModified(toTimestamp(modified));
+                consumedKeys.add(DublinCore.MODIFIED.getName());
+            }
+        } catch (Exception e) {
+            LOG.debugf("Could not parse Dublin Core modified date: %s", e.getMessage());
         }
-        
-        String subject = tikaMetadata.get(DublinCore.SUBJECT);
-        if (subject != null && !subject.trim().isEmpty()) {
-            builder.addSubjects(subject.trim());
-        }
-        
-        String description = tikaMetadata.get(DublinCore.DESCRIPTION);
-        if (description != null && !description.trim().isEmpty()) {
-            builder.setDescription(description.trim());
-        }
-        
-        String publisher = tikaMetadata.get(DublinCore.PUBLISHER);
-        if (publisher != null && !publisher.trim().isEmpty()) {
-            builder.setPublisher(publisher.trim());
-        }
-        
-        String contributor = tikaMetadata.get(DublinCore.CONTRIBUTOR);
-        if (contributor != null && !contributor.trim().isEmpty()) {
-            builder.addContributors(contributor.trim());
-        }
-        
-        String type = tikaMetadata.get(DublinCore.TYPE);
-        if (type != null && !type.trim().isEmpty()) {
-            builder.setType(type.trim());
-        }
-        
-        String format = tikaMetadata.get(DublinCore.FORMAT);
-        if (format != null && !format.trim().isEmpty()) {
-            builder.setFormat(format.trim());
-        }
-        
-        String identifier = tikaMetadata.get(DublinCore.IDENTIFIER);
-        if (identifier != null && !identifier.trim().isEmpty()) {
-            builder.setIdentifier(identifier.trim());
-        }
-        
-        String source = tikaMetadata.get(DublinCore.SOURCE);
-        if (source != null && !source.trim().isEmpty()) {
-            builder.setSource(source.trim());
-        }
-        
-        String language = tikaMetadata.get(DublinCore.LANGUAGE);
-        if (language != null && !language.trim().isEmpty()) {
-            builder.setLanguage(language.trim());
-        }
-        
-        String relation = tikaMetadata.get(DublinCore.RELATION);
-        if (relation != null && !relation.trim().isEmpty()) {
-            builder.setRelation(relation.trim());
-        }
-        
-        String coverage = tikaMetadata.get(DublinCore.COVERAGE);
-        if (coverage != null && !coverage.trim().isEmpty()) {
-            builder.setCoverage(coverage.trim());
-        }
-        
-        String rights = tikaMetadata.get(DublinCore.RIGHTS);
-        if (rights != null && !rights.trim().isEmpty()) {
-            builder.setRights(rights.trim());
-        }
-        
-        // Handle date fields
+
         try {
             java.util.Date date = tikaMetadata.getDate(DublinCore.DATE);
             if (date != null) {
-                java.time.Instant instant = date.toInstant();
-                com.google.protobuf.Timestamp timestamp = com.google.protobuf.Timestamp.newBuilder()
-                        .setSeconds(instant.getEpochSecond())
-                        .setNanos(instant.getNano())
-                        .build();
-                builder.setDate(timestamp);
+                builder.setDate(toTimestamp(date));
+                consumedKeys.add(DublinCore.DATE.getName());
             }
         } catch (Exception e) {
             LOG.debugf("Could not parse Dublin Core date: %s", e.getMessage());
         }
-        
+
         return builder.build();
+    }
+
+    /**
+     * Collects all Dublin Core related keys from Tika metadata, including
+     * XMP-sourced duplicates (xmp:dc:*) and x-default locale variants (*:x-default).
+     * These are all representations of the same Dublin Core data and should be
+     * excluded from document-type builder additional_metadata.
+     */
+    private static void collectDublinCoreRelatedKeys(Metadata tikaMetadata, Set<String> keys) {
+        for (String name : tikaMetadata.names()) {
+            // dc:* and dcterms:* (normalized Dublin Core)
+            if (name.startsWith("dc:") || name.startsWith("dcterms:")) {
+                keys.add(name);
+            }
+            // xmp:dc:* (XMP-sourced Dublin Core duplicates)
+            else if (name.startsWith("xmp:dc:")) {
+                keys.add(name);
+            }
+            // meta:keyword is a Tika alias for dc:subject
+            else if (name.equals("meta:keyword")) {
+                keys.add(name);
+            }
+        }
+    }
+
+    /**
+     * Collects Tika internal processing metadata keys that are common to ALL document types.
+     * These are not document metadata — they describe Tika's parsing behavior.
+     * They're already captured in TikaBaseFields.raw_metadata, so excluding them from
+     * document-type additional_metadata prevents duplication.
+     */
+    private static void collectTikaInternalKeys(Metadata tikaMetadata, Set<String> keys) {
+        for (String name : tikaMetadata.names()) {
+            // X-TIKA:* fields (Parsed-By, Parsed-By-Full-Set, versionCount, etc.)
+            if (name.startsWith("X-TIKA:")) {
+                keys.add(name);
+            }
+            // Content-Type-Magic-Detected — Tika's magic detection
+            else if (name.equals("Content-Type-Magic-Detected")) {
+                keys.add(name);
+            }
+            // resourceName — the original filename passed to Tika
+            else if (name.equals("resourceName")) {
+                keys.add(name);
+            }
+            // zip:detectorZipFileOpened — Tika ZIP detector internal
+            else if (name.startsWith("zip:")) {
+                keys.add(name);
+            }
+        }
+    }
+
+    private static void mapDcField(Metadata metadata, ai.pipestream.shaded.tika.metadata.Property prop,
+                                    java.util.function.Consumer<String> setter, Set<String> consumedKeys) {
+        String key = prop.getName();
+        String value = metadata.get(key);
+        if (value != null && !value.trim().isEmpty()) {
+            setter.accept(value.trim());
+            consumedKeys.add(key);
+        }
+    }
+
+    private static void mapDcRepeatedField(Metadata metadata, ai.pipestream.shaded.tika.metadata.Property prop,
+                                            java.util.function.Consumer<String> adder, Set<String> consumedKeys) {
+        String key = prop.getName();
+        String[] values = metadata.getValues(key);
+        if (values != null) {
+            for (String v : values) {
+                if (v != null && !v.trim().isEmpty()) {
+                    adder.accept(v.trim());
+                }
+            }
+            if (values.length > 0) {
+                consumedKeys.add(key);
+            }
+        }
+    }
+
+    private static com.google.protobuf.Timestamp toTimestamp(java.util.Date date) {
+        java.time.Instant instant = date.toInstant();
+        return com.google.protobuf.Timestamp.newBuilder()
+                .setSeconds(instant.getEpochSecond())
+                .setNanos(instant.getNano())
+                .build();
     }
     
     /**

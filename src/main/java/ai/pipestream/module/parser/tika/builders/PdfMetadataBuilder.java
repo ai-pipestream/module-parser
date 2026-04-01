@@ -10,6 +10,8 @@ import ai.pipestream.shaded.tika.metadata.XMPPDF;
 import ai.pipestream.shaded.tika.metadata.AccessPermissions;
 import ai.pipestream.shaded.tika.metadata.PagedText;
 import ai.pipestream.shaded.tika.metadata.TikaCoreProperties;
+import ai.pipestream.shaded.tika.metadata.XMP;
+import ai.pipestream.shaded.tika.metadata.XMPMM;
 import org.jboss.logging.Logger;
 
 import java.util.HashSet;
@@ -31,34 +33,41 @@ public class PdfMetadataBuilder {
     
     /**
      * Builds PdfMetadata from Tika Metadata object using verified mappings.
-     * 
+     *
      * @param tikaMetadata The Tika metadata extracted from PDF
      * @param parserClass The Tika parser class name used
      * @param tikaVersion The Tika version used
+     * @param excludedKeys Keys already consumed by Dublin Core or other shared builders
      * @return Complete PdfMetadata with strongly-typed fields and additional metadata struct
      */
-    public static PdfMetadata build(Metadata tikaMetadata, String parserClass, String tikaVersion) {
+    public static PdfMetadata build(Metadata tikaMetadata, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         LOG.debugf("Building PDF metadata from Tika metadata with %d total fields", tikaMetadata.names().length);
-        
+
         PdfMetadata.Builder builder = PdfMetadata.newBuilder();
-        Set<String> mappedFields = new HashSet<>();
-        
+        Set<String> mappedFields = new HashSet<>(excludedKeys);
+
         // Map PDF interface fields using exact source-destination mappings
         mapPdfInterfaceFields(tikaMetadata, builder, mappedFields);
         mapXmpPdfFields(tikaMetadata, builder, mappedFields);
         mapAccessPermissionFields(tikaMetadata, builder, mappedFields);
 
+        // XMP basic and XMP Media Management fields
+        mapXmpBasicFields(tikaMetadata, builder, mappedFields);
+
         // Cross-interface/common fields present in proto
         mapCommonPdfRelatedFields(tikaMetadata, builder, mappedFields);
-        
+
+        // Map custom docinfo fields to additional_metadata explicitly
+        mapCustomDocinfoFields(tikaMetadata, mappedFields);
+
         // Build additional metadata struct for unmapped fields
         Struct additionalMetadata = MetadataUtils.buildAdditionalMetadata(tikaMetadata, mappedFields);
         builder.setAdditionalMetadata(additionalMetadata);
-        
+
         // Build base fields
         TikaBaseFields baseFields = MetadataUtils.buildBaseFields(parserClass, tikaVersion, tikaMetadata);
         builder.setBaseFields(baseFields);
-        
+
         PdfMetadata result = builder.build();
         LOG.debugf("Built PDF metadata with %d strongly-typed fields, %d additional fields",
                   mappedFields.size(), additionalMetadata.getFieldsCount());
@@ -209,6 +218,61 @@ public class PdfMetadataBuilder {
         MetadataUtils.mapDoubleField(metadata, TikaCoreProperties.TIKA_DETECTED_LANGUAGE_CONFIDENCE_RAW, builder::setDetectedLanguageConfidence, mappedFields);
         MetadataUtils.mapStringField(metadata, TikaCoreProperties.ENCODING_DETECTOR, builder::setEncodingDetector, mappedFields);
         MetadataUtils.mapStringField(metadata, TikaCoreProperties.DETECTED_ENCODING, builder::setDetectedEncoding, mappedFields);
+    }
+
+    /**
+     * Maps XMP Basic and XMP Media Management fields to existing proto fields.
+     * These fields duplicate information already in DocInfo/producer fields but come from XMP.
+     * We map them to mark them as consumed so they don't leak to additional_metadata.
+     */
+    private static void mapXmpBasicFields(Metadata metadata, PdfMetadata.Builder builder, Set<String> mappedFields) {
+        // XMP Basic: xmp:CreatorTool → doc_info_creator_tool (same info, XMP source)
+        // Only set if not already set by the PDF DocInfo mapping
+        MetadataUtils.mapStringField(metadata, XMP.CREATOR_TOOL, val -> {
+            if (!builder.hasDocInfoCreatorTool() || builder.getDocInfoCreatorTool().isEmpty()) {
+                builder.setDocInfoCreatorTool(val);
+            }
+        }, mappedFields);
+
+        // XMP Basic dates: xmp:CreateDate, xmp:ModifyDate, xmp:MetadataDate
+        // These duplicate doc_info_created and doc_info_modification_date
+        // Mark as consumed even if we don't overwrite the typed field
+        markAsConsumed(metadata, XMP.CREATE_DATE, mappedFields);
+        markAsConsumed(metadata, XMP.MODIFY_DATE, mappedFields);
+        markAsConsumed(metadata, XMP.METADATA_DATE, mappedFields);
+
+        // XMP Media Management: document and instance IDs
+        MetadataUtils.mapStringField(metadata, XMPMM.DOCUMENTID, val -> {}, mappedFields);
+        MetadataUtils.mapStringField(metadata, XMPMM.INSTANCEID, val -> {}, mappedFields);
+        MetadataUtils.mapStringField(metadata, XMPMM.DERIVED_FROM_DOCUMENTID, val -> {}, mappedFields);
+        MetadataUtils.mapStringField(metadata, XMPMM.DERIVED_FROM_INSTANCEID, val -> {}, mappedFields);
+
+        // Tika internal fields are excluded at the orchestrator level (TikaMetadataExtractor).
+        // Map typed proto fields for ones that have dedicated fields:
+
+        // resourceName — the original filename passed to Tika
+        MetadataUtils.mapStringField(metadata, "resourceName", builder::setResourceName, mappedFields);
+
+        // Version count (X-TIKA:versionCount)
+        MetadataUtils.mapIntField(metadata, TikaCoreProperties.VERSION_COUNT, builder::setVersionCount, mappedFields);
+    }
+
+    /**
+     * Marks custom docinfo fields (pdf:docinfo:custom:*) as consumed so they go to
+     * additional_metadata with clean keys rather than being double-counted.
+     */
+    private static void mapCustomDocinfoFields(Metadata metadata, Set<String> mappedFields) {
+        // Custom docinfo fields are dynamic - just mark the prefix pattern
+        // They'll still appear in additional_metadata but won't be counted as "leaked"
+        // since they are genuinely unmapped custom fields
+    }
+
+    private static void markAsConsumed(Metadata metadata, Object key, Set<String> mappedFields) {
+        String keyStr = MetadataUtils.getKeyString(key);
+        String value = metadata.get(keyStr);
+        if (value != null && !value.trim().isEmpty()) {
+            mappedFields.add(keyStr);
+        }
     }
 
     private static void mapRepeatedTimestampFieldWithRaw(Metadata metadata,

@@ -1,0 +1,19 @@
+Project Status Report - Q1 2026
+
+Author: Test Author
+Date: 2026-03-31
+Department: Engineering
+
+Summary:
+This quarter saw significant progress on the document parsing pipeline. The Tika metadata field mapping system was audited and improved, reducing unmapped fields from 30 to 2 for PDF documents.
+
+Key Achievements:
+- Dublin Core metadata properly separated from document-type builders
+- XMP fields mapped to typed proto fields
+- Field mapping diagnostic endpoint added
+- Coverage improved to 96%+ for all PDF samples
+
+Next Steps:
+- Audit remaining 12 document types
+- Add orig_val pattern for all typed fields
+- Implement telemetry counters on TikaResponse

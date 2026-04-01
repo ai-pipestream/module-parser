@@ -6,11 +6,14 @@ import ai.pipestream.parsed.data.tika.base.v1.TikaBaseFields;
 import ai.pipestream.shaded.tika.metadata.Metadata;
 import ai.pipestream.shaded.tika.metadata.TikaCoreProperties;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class HtmlMetadataBuilder {
 
-    public static HtmlMetadata build(Metadata md, String parserClass, String tikaVersion) {
+    public static HtmlMetadata build(Metadata md, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         HtmlMetadata.Builder b = HtmlMetadata.newBuilder();
-        java.util.Set<String> mapped = new java.util.HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         // Core
         MetadataUtils.mapStringField(md, TikaCoreProperties.TITLE, b::setTitle, mapped);
@@ -82,7 +85,7 @@ public class HtmlMetadataBuilder {
         return b.build();
     }
 
-    private static void mapMeta(Metadata md, HtmlMetadata.Builder b, java.util.Set<String> mapped) {
+    private static void mapMeta(Metadata md, HtmlMetadata.Builder b, Set<String> mapped) {
         // Standard meta
         MetadataUtils.mapStringField(md, "html:meta:description", b::setMetaDescription, mapped);
         MetadataUtils.mapStringField(md, "html:meta:keywords", b::setMetaKeywords, mapped);

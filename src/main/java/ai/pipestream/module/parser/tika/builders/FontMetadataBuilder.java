@@ -12,9 +12,9 @@ import java.util.Set;
 
 public class FontMetadataBuilder {
 
-    public static FontMetadata build(Metadata md, String parserClass, String tikaVersion) {
+    public static FontMetadata build(Metadata md, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         FontMetadata.Builder b = FontMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         // Basic font name(s)
         MetadataUtils.mapRepeatedStringField(md, Font.FONT_NAME, names -> {

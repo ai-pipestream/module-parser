@@ -985,7 +985,7 @@ public class ParserServiceEndpoint {
                 }
 
                 result.put("output_doc", outputDoc);
-                result.put("processorLogs", List.of(
+                List<String> logs = new ArrayList<>(List.of(
                     "Parser service successfully processed uploaded file using Tika and Docling",
                     "File type detected: " + (file.contentType() != null ? file.contentType() : "unknown"),
                     "Extracted title: '" + parsedDoc.getSearchMetadata().getTitle() + "'",
@@ -993,7 +993,9 @@ public class ParserServiceEndpoint {
                     "Structured data available: " + (parsedDoc.hasStructuredData() ? "yes" : "no"),
                     "Parsers used: " + String.join(", ", parsedDoc.getParsedMetadataMap().keySet())
                 ));
-                
+                logs.addAll(buildFieldCountLogs(parsedDoc));
+                result.put("processorLogs", logs);
+
                 return Response.ok(result).build();
                 
             } catch (Exception e) {
@@ -1053,17 +1055,198 @@ public class ParserServiceEndpoint {
         return outputDoc;
     }
 
+    /**
+     * Diagnostic endpoint: parses a file and returns a structured breakdown of
+     * which Tika fields were mapped to typed proto fields vs which ended up in additional_metadata.
+     * Used for auditing field mapping coverage.
+     */
     @POST
-    @Path("/test-process")
-    @Operation(summary = "Run as test process", description = "Execute parsing in test mode (Placeholder)")
+    @Path("/diagnose-fields")
+    @Operation(summary = "Diagnose field mapping", description = "Parse a file and return field mapping diagnostics: typed fields, additional_metadata fields, and Dublin Core fields")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
-    public Uni<Response> testProcess(
-            @RestForm("file") FileUpload file,
-            @RestForm("config") String configJson) {
-        return Uni.createFrom().item(
-            Response.ok(Map.of("message", "Test process mode logic disabled until test suite is fixed.", "status", "STUB"))
-                .build()
-        );
+    @APIResponse(responseCode = "200", description = "Field mapping diagnostics")
+    public Uni<Response> diagnoseFieldMapping(
+            @RestForm("file") FileUpload file) {
+
+        return Uni.createFrom().item(() -> {
+            if (file == null || file.size() == 0) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "No file uploaded or file is empty"))
+                        .build();
+            }
+
+            try {
+                File uploadedFile = file.uploadedFile().toFile();
+                byte[] fileContent = Files.readAllBytes(uploadedFile.toPath());
+
+                ParserConfig config = ParserConfig.defaultConfig();
+                PipeDoc parsedDoc = documentParser.parseDocument(
+                        ByteString.copyFrom(fileContent), config, file.fileName());
+
+                // Extract TikaResponse from parsed_metadata
+                ai.pipestream.data.v1.ParsedMetadata tikaParsed = parsedDoc.getParsedMetadataMap().get("tika");
+                if (tikaParsed == null) {
+                    return Response.ok(Map.of("error", "No Tika metadata found in parsed document")).build();
+                }
+
+                ai.pipestream.parsed.data.tika.v1.TikaResponse tikaResponse =
+                        tikaParsed.getData().unpack(ai.pipestream.parsed.data.tika.v1.TikaResponse.class);
+
+                // Use JsonFormat to get the full response as a map
+                com.google.protobuf.TypeRegistry typeRegistry = com.google.protobuf.TypeRegistry.newBuilder()
+                        .add(ai.pipestream.parsed.data.tika.v1.TikaResponse.getDescriptor())
+                        .build();
+                com.google.protobuf.util.JsonFormat.Printer printer = com.google.protobuf.util.JsonFormat.printer()
+                        .usingTypeRegistry(typeRegistry);
+                String tikaJson = printer.print(tikaResponse);
+                Map<String, Object> tikaMap = objectMapper.readValue(tikaJson, Map.class);
+
+                // Build diagnostic response
+                Map<String, Object> result = new HashMap<>();
+                result.put("filename", file.fileName());
+                result.put("fileSize", file.size());
+
+                // Detect which document_metadata oneof is set
+                String docType = "unknown";
+                Map<String, Object> docMeta = null;
+                for (String key : new String[]{"pdf", "office", "image", "email", "media", "html",
+                        "rtf", "database", "font", "epub", "warc", "climateForecast", "creativeCommons", "generic"}) {
+                    if (tikaMap.containsKey(key)) {
+                        docType = key;
+                        Object metaObj = tikaMap.get(key);
+                        if (metaObj instanceof Map) {
+                            docMeta = (Map<String, Object>) metaObj;
+                        }
+                        break;
+                    }
+                }
+                result.put("documentType", docType);
+
+                // Typed fields (everything except additionalMetadata and baseFields)
+                Map<String, Object> typedFields = new java.util.LinkedHashMap<>();
+                Map<String, Object> additionalFields = new java.util.LinkedHashMap<>();
+                if (docMeta != null) {
+                    for (Map.Entry<String, Object> entry : docMeta.entrySet()) {
+                        String key = entry.getKey();
+                        if ("additionalMetadata".equals(key)) {
+                            if (entry.getValue() instanceof Map) {
+                                additionalFields.putAll((Map<String, Object>) entry.getValue());
+                            }
+                        } else if (!"baseFields".equals(key)) {
+                            typedFields.put(key, entry.getValue());
+                        }
+                    }
+                }
+
+                result.put("typedFieldCount", typedFields.size());
+                result.put("typedFields", typedFields);
+                result.put("additionalFieldCount", additionalFields.size());
+                result.put("additionalFields", additionalFields);
+
+                // Dublin Core
+                Map<String, Object> dublinCore = new java.util.LinkedHashMap<>();
+                if (tikaMap.containsKey("dublinCore") && tikaMap.get("dublinCore") instanceof Map) {
+                    dublinCore.putAll((Map<String, Object>) tikaMap.get("dublinCore"));
+                }
+                result.put("dublinCoreFieldCount", dublinCore.size());
+                result.put("dublinCore", dublinCore);
+
+                // Coverage percentage
+                int total = typedFields.size() + additionalFields.size();
+                double coverage = total > 0 ? (typedFields.size() * 100.0 / total) : 100.0;
+                result.put("typedCoveragePercent", Math.round(coverage * 10.0) / 10.0);
+
+                return Response.ok(result).build();
+
+            } catch (Exception e) {
+                LOG.error("Error in field mapping diagnostic", e);
+                return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                        .entity(Map.of("error", "Diagnostic failed: " + e.getMessage()))
+                        .build();
+            }
+        }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+    }
+
+    /**
+     * Lists sample documents available for testing.
+     */
+    @GET
+    @Path("/samples")
+    @Operation(summary = "List sample documents", description = "Lists sample documents bundled with the parser for testing")
+    @APIResponse(responseCode = "200", description = "Sample documents listed")
+    public Uni<Response> listSamples() {
+        return Uni.createFrom().item(() -> {
+            List<Map<String, Object>> samples = sampleLoaderService.loadDemoDocuments();
+            return Response.ok(Map.of("samples", samples, "count", samples.size())).build();
+        });
+    }
+
+    /**
+     * Extracts field count diagnostics from TikaResponse inside a PipeDoc.
+     */
+    private List<String> buildFieldCountLogs(PipeDoc parsedDoc) {
+        List<String> logs = new ArrayList<>();
+        try {
+            ai.pipestream.data.v1.ParsedMetadata tikaParsed = parsedDoc.getParsedMetadataMap().get("tika");
+            if (tikaParsed == null) return logs;
+
+            ai.pipestream.parsed.data.tika.v1.TikaResponse tikaResponse =
+                    tikaParsed.getData().unpack(ai.pipestream.parsed.data.tika.v1.TikaResponse.class);
+
+            com.google.protobuf.TypeRegistry typeRegistry = com.google.protobuf.TypeRegistry.newBuilder()
+                    .add(ai.pipestream.parsed.data.tika.v1.TikaResponse.getDescriptor())
+                    .build();
+            String tikaJson = com.google.protobuf.util.JsonFormat.printer()
+                    .usingTypeRegistry(typeRegistry).print(tikaResponse);
+            Map<String, Object> tikaMap = objectMapper.readValue(tikaJson, Map.class);
+
+            // Detect document type oneof
+            String docType = "generic";
+            Map<String, Object> docMeta = null;
+            for (String key : new String[]{"pdf", "office", "image", "email", "media", "html",
+                    "rtf", "database", "font", "epub", "warc", "climateForecast", "creativeCommons", "generic"}) {
+                if (tikaMap.containsKey(key) && tikaMap.get(key) instanceof Map) {
+                    docType = key;
+                    docMeta = (Map<String, Object>) tikaMap.get(key);
+                    break;
+                }
+            }
+
+            int typedCount = 0;
+            int additionalCount = 0;
+            List<String> additionalKeys = new ArrayList<>();
+            if (docMeta != null) {
+                for (Map.Entry<String, Object> entry : docMeta.entrySet()) {
+                    if ("additionalMetadata".equals(entry.getKey())) {
+                        if (entry.getValue() instanceof Map) {
+                            Map<String, Object> additional = (Map<String, Object>) entry.getValue();
+                            additionalCount = additional.size();
+                            additionalKeys.addAll(additional.keySet());
+                        }
+                    } else if (!"baseFields".equals(entry.getKey())) {
+                        typedCount++;
+                    }
+                }
+            }
+
+            int dublinCoreCount = 0;
+            if (tikaMap.containsKey("dublinCore") && tikaMap.get("dublinCore") instanceof Map) {
+                dublinCoreCount = ((Map<?, ?>) tikaMap.get("dublinCore")).size();
+            }
+
+            int total = typedCount + additionalCount;
+            double coverage = total > 0 ? (typedCount * 100.0 / total) : 100.0;
+
+            logs.add(String.format("Document type: %s", docType));
+            logs.add(String.format("Field mapping: %d typed, %d additional, %d Dublin Core (%.1f%% coverage)",
+                    typedCount, additionalCount, dublinCoreCount, coverage));
+            if (!additionalKeys.isEmpty()) {
+                logs.add("Unmapped fields: " + String.join(", ", additionalKeys));
+            }
+        } catch (Exception e) {
+            LOG.debugf("Could not extract field count diagnostics: %s", e.getMessage());
+        }
+        return logs;
     }
 
     /**

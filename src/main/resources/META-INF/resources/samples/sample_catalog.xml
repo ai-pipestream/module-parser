@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+    <title>Sample Product Catalog</title>
+    <author>Test Author</author>
+    <product id="001">
+        <name>Widget Alpha</name>
+        <category>Hardware</category>
+        <price currency="USD">29.99</price>
+        <description>A basic hardware widget for testing XML parsing.</description>
+    </product>
+    <product id="002">
+        <name>Widget Beta</name>
+        <category>Software</category>
+        <price currency="USD">49.99</price>
+        <description>A software widget demonstrating XML metadata extraction.</description>
+    </product>
+</catalog>

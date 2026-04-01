@@ -7,6 +7,7 @@ import ai.pipestream.shaded.tika.metadata.Metadata;
 import ai.pipestream.shaded.tika.metadata.Office;
 import ai.pipestream.shaded.tika.metadata.OfficeOpenXMLCore;
 import ai.pipestream.shaded.tika.metadata.OfficeOpenXMLExtended;
+import ai.pipestream.shaded.tika.metadata.PagedText;
 import org.jboss.logging.Logger;
 
 import java.util.HashSet;
@@ -15,9 +16,9 @@ import java.util.Set;
 public class OfficeMetadataBuilder {
     private static final Logger LOG = Logger.getLogger(OfficeMetadataBuilder.class);
 
-    public static OfficeMetadata build(Metadata tikaMetadata, String parserClass, String tikaVersion) {
+    public static OfficeMetadata build(Metadata tikaMetadata, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         OfficeMetadata.Builder builder = OfficeMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         mapOfficeCore(tikaMetadata, builder, mapped);
         mapOfficeOpenXMLCore(tikaMetadata, builder, mapped);
@@ -124,6 +125,14 @@ public class OfficeMetadataBuilder {
     private static void mapCommonFields(Metadata md, OfficeMetadata.Builder b, Set<String> mapped) {
         // Content type and security/signatures
         MetadataUtils.mapStringField(md, "Content-Type", b::setContentType, mapped);
+
+        // PagedText.N_PAGES (xmpTPg:NPages) — XMP page count, fallback if Office.PAGE_COUNT not present
+        if (!mapped.contains(PagedText.N_PAGES.getName())) {
+            MetadataUtils.mapIntField(md, PagedText.N_PAGES, b::setPageCount, mapped);
+        } else {
+            // Already in excluded/mapped set, just consume it
+            mapped.add(PagedText.N_PAGES.getName());
+        }
     }
 
     private static Integer tryParseDurationSeconds(String isoLike) {

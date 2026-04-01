@@ -16,9 +16,9 @@ public final class CreativeCommonsMetadataBuilder {
 
     private CreativeCommonsMetadataBuilder() {}
 
-    public static CreativeCommonsMetadata build(Metadata metadata, String parserClass, String tikaVersion) {
+    public static CreativeCommonsMetadata build(Metadata metadata, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         CreativeCommonsMetadata.Builder builder = CreativeCommonsMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         org.jboss.logging.Logger LOG = org.jboss.logging.Logger.getLogger(CreativeCommonsMetadataBuilder.class);
 //        LOG.debugf("Building CreativeCommonsMetadata, checking for XMPRights fields...");

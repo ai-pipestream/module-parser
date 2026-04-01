@@ -16,9 +16,9 @@ public final class ClimateForecastMetadataBuilder {
 
     private ClimateForecastMetadataBuilder() {}
 
-    public static ClimateForcastMetadata build(Metadata md, String parserClass, String tikaVersion) {
+    public static ClimateForcastMetadata build(Metadata md, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         ClimateForcastMetadata.Builder builder = ClimateForcastMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         // TODO: Map well-known CF/global attributes incrementally using MetadataUtils when catalogued
 

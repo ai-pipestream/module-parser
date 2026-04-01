@@ -1,0 +1,6 @@
+Name,Category,Price,InStock,Rating
+Widget Alpha,Hardware,29.99,true,4.5
+Widget Beta,Software,49.99,true,4.8
+Widget Gamma,Service,199.99,false,3.9
+Widget Delta,Hardware,14.99,true,4.2
+Widget Epsilon,Software,89.99,true,4.7

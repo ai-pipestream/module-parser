@@ -13,9 +13,9 @@ import java.util.Set;
 
 public class EmailMetadataBuilder {
 
-    public static EmailMetadata build(Metadata md, String parserClass, String tikaVersion) {
+    public static EmailMetadata build(Metadata md, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         EmailMetadata.Builder b = EmailMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         mapCore(md, b, mapped);
         mapMessage(md, b, mapped);

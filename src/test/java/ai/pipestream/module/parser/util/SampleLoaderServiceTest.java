@@ -19,7 +19,7 @@ public class SampleLoaderServiceTest {
         List<Map<String, Object>> documents = sampleLoaderService.loadDemoDocuments();
 
         Assertions.assertNotNull(documents, "Documents list should not be null");
-        Assertions.assertEquals(4, documents.size(), "Should load exactly 4 sample documents from files.csv");
+        Assertions.assertEquals(16, documents.size(), "Should load exactly 16 sample documents from files.csv");
 
         // Verify content of the first document (MagPi145.pdf)
         Map<String, Object> doc1 = documents.get(0);

@@ -442,7 +442,7 @@ public class MetadataUtils {
     /**
      * Converts a key (String or Property) to string representation.
      */
-    private static String getKeyString(Object key) {
+    static String getKeyString(Object key) {
         if (key instanceof Property) {
             return ((Property) key).getName();
         } else if (key instanceof String) {

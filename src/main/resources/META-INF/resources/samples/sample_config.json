@@ -1,0 +1,15 @@
+{
+  "name": "Sample JSON Config",
+  "version": "1.0.0",
+  "description": "A sample JSON file for parser testing",
+  "settings": {
+    "maxRetries": 3,
+    "timeout": 30000,
+    "features": [
+      "parsing",
+      "extraction",
+      "mapping"
+    ]
+  },
+  "author": "Test Author"
+}

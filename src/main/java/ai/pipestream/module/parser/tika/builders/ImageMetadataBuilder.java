@@ -17,9 +17,9 @@ import java.util.Set;
 
 public class ImageMetadataBuilder {
 
-    public static ImageMetadata build(Metadata md, String parserClass, String tikaVersion) {
+    public static ImageMetadata build(Metadata md, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         ImageMetadata.Builder b = ImageMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         mapBasic(md, b, mapped);
         mapDates(md, b, mapped);

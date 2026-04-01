@@ -12,9 +12,9 @@ import java.util.Set;
 
 public class MediaMetadataBuilder {
 
-    public static MediaMetadata build(Metadata md, String parserClass, String tikaVersion) {
+    public static MediaMetadata build(Metadata md, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         MediaMetadata.Builder b = MediaMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         mapCore(md, b, mapped);
         mapXmpdm(md, b, mapped);

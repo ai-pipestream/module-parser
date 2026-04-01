@@ -3,3 +3,15 @@ MagPi145.pdf,The MagPi Issue 145,Raspberry Pi magazine issue,application/pdf
 attn_all_you_need_1706.03762v7.pdf,Attention Is All You Need,Original Transformer architecture paper,application/pdf
 apple_FY25_Q4_Consolidated_Financial_Statements.pdf,Apple FY25 Q4 Financials,Consolidated financial statements,application/pdf
 irs_f1040.pdf,IRS Form 1040,US Individual Income Tax Return,application/pdf
+sample_report.docx,Sample Technical Report,Minimal Word doc for testing OfficeMetadataBuilder,application/vnd.openxmlformats-officedocument.wordprocessingml.document
+sample_slides.pptx,Sample Presentation,Minimal PowerPoint for testing OfficeMetadataBuilder,application/vnd.openxmlformats-officedocument.presentationml.presentation
+sample_data.xlsx,Sample Spreadsheet,Minimal Excel for testing OfficeMetadataBuilder,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+sample_page.html,Sample Web Page,HTML with meta tags for testing HtmlMetadataBuilder,text/html
+sample_memo.rtf,Sample RTF Document,RTF with info block for testing RtfMetadataBuilder,application/rtf
+sample_report.txt,Project Status Report,Plain text document,text/plain
+sample_catalog.xml,Sample Product Catalog,XML document for testing generic parsing,application/xml
+sample_products.csv,Sample Products CSV,CSV data file,text/csv
+sample_paper.tex,Sample LaTeX Document,LaTeX source for testing,application/x-tex
+sample_archive.zip,Sample Archive,ZIP with mixed content for embedded doc extraction,application/zip
+sample_docs.md,Sample Markdown,Markdown documentation file,text/markdown
+sample_config.json,Sample JSON Config,JSON configuration file,application/json

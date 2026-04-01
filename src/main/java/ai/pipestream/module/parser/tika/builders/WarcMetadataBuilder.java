@@ -16,9 +16,9 @@ import java.util.Set;
 
 public class WarcMetadataBuilder {
 
-    public static WarcMetadata build(Metadata md, String parserClass, String tikaVersion) {
+    public static WarcMetadata build(Metadata md, String parserClass, String tikaVersion, Set<String> excludedKeys) {
         WarcMetadata.Builder b = WarcMetadata.newBuilder();
-        Set<String> mapped = new HashSet<>();
+        Set<String> mapped = new HashSet<>(excludedKeys);
 
         mapWarc(md, b, mapped);
         mapHttp(md, b, mapped);

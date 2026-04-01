@@ -363,6 +363,20 @@ public class ParserServiceImpl implements PipeStepProcessorService {
                 LOG.warn("HTML enrichment failed", ignored);
             }
 
+            // 5. Resolve section character offsets for any DocOutline that was set.
+            // Enables section-level vector centroids and search result highlighting.
+            try {
+                ai.pipestream.data.v1.SearchMetadata currentSm = outputDocBuilder.getSearchMetadata();
+                if (currentSm.hasDocOutline() && currentSm.getDocOutline().getSectionsCount() > 0) {
+                    String bodyText = currentSm.getBody();
+                    if (bodyText != null && !bodyText.isEmpty()) {
+                        DocOutline resolved = ai.pipestream.module.parser.tika.builders.SectionOffsetResolver
+                                .resolve(currentSm.getDocOutline(), bodyText);
+                        outputDocBuilder.setSearchMetadata(currentSm.toBuilder().setDocOutline(resolved).build());
+                    }
+                }
+            } catch (Exception ignored) {}
+
         } catch (Exception e) {
             LOG.warn("Enrichment failed", e);
         }

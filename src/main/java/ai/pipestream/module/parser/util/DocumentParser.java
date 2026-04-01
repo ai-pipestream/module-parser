@@ -613,8 +613,11 @@ public class DocumentParser {
                     DocOutline outline = ai.pipestream.module.parser.tika.builders.HtmlOutlineExtractor
                             .buildDocOutlineFromHtml(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     if (outline.getSectionsCount() > 0) {
+                        // Resolve section character offsets against the body text
+                        DocOutline resolved = ai.pipestream.module.parser.tika.builders.SectionOffsetResolver
+                                .resolve(outline, body);
                         SearchMetadata sm = parsedDoc.getSearchMetadata().toBuilder()
-                                .setDocOutline(outline)
+                                .setDocOutline(resolved)
                                 .build();
                         builder.setSearchMetadata(sm);
                     }

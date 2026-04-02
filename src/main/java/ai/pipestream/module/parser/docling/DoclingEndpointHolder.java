@@ -73,5 +73,19 @@ public class DoclingEndpointHolder {
         }
     }
 
+    /**
+     * Probes the active Docling endpoint for health.
+     * Returns true if the health endpoint responds successfully.
+     */
+    public boolean isHealthy() {
+        try {
+            getClient().health();
+            return true;
+        } catch (Exception e) {
+            LOG.debugf("Docling health probe failed: %s", e.getMessage());
+            return false;
+        }
+    }
+
     public record SwapResult(boolean success, String activeUrl, String previousUrl, String error) {}
 }

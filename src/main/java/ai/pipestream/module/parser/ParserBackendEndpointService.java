@@ -51,7 +51,7 @@ public class ParserBackendEndpointService implements BackendEndpointService {
                 .addEndpoints(BackendEndpointInfo.newBuilder()
                         .setBackendId("docling")
                         .setEndpointUrl(doclingEndpointHolder.getActiveUrl())
-                        .setHealthy(!doclingEndpointHolder.getActiveUrl().isEmpty())
+                        .setHealthy(doclingEndpointHolder.isHealthy())
                         .setDescription("Docling document analysis service")
                         .build())
                 .build());

@@ -533,26 +533,5 @@ public class ParserServiceImpl implements PipeStepProcessorService {
         }
     }
 
-    @Override
-    public Uni<UpdateBackendEndpointResponse> updateBackendEndpoint(UpdateBackendEndpointRequest request) {
-        String newUrl = request.getEndpointUrl();
-        String backendId = request.getBackendId();
-
-        // Only "docling" backend (or empty = default = docling)
-        if (!backendId.isEmpty() && !"docling".equals(backendId)) {
-            return Uni.createFrom().item(UpdateBackendEndpointResponse.newBuilder()
-                    .setSuccess(false)
-                    .setActiveEndpointUrl(doclingEndpointHolder.getActiveUrl())
-                    .setErrorMessage("Unknown backend_id: " + backendId + ". Supported: docling")
-                    .build());
-        }
-
-        var result = doclingEndpointHolder.swap(newUrl);
-        return Uni.createFrom().item(UpdateBackendEndpointResponse.newBuilder()
-                .setSuccess(result.success())
-                .setActiveEndpointUrl(result.activeUrl())
-                .setPreviousEndpointUrl(result.previousUrl())
-                .setErrorMessage(result.error() != null ? result.error() : "")
-                .build());
-    }
+    // UpdateBackendEndpoint moved to ParserBackendEndpointService (BackendEndpointService gRPC)
 }

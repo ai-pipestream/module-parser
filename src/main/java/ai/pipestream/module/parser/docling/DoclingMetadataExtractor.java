@@ -39,7 +39,7 @@ public class DoclingMetadataExtractor {
     private static final Logger LOG = Logger.getLogger(DoclingMetadataExtractor.class);
 
     @Inject
-    DoclingServeApi doclingServeApi;
+    DoclingEndpointHolder doclingEndpointHolder;
 
     /**
      * Extracts comprehensive metadata from document bytes using Docling.
@@ -89,7 +89,7 @@ public class DoclingMetadataExtractor {
                     .build();
 
             // Call Docling service directly with full options
-            ConvertDocumentResponse doclingResponse = doclingServeApi.convertSource(request);
+            ConvertDocumentResponse doclingResponse = doclingEndpointHolder.getClient().convertSource(request);
 
             // Map ConvertDocumentResponse to DoclingResponse proto
             if (doclingResponse instanceof InBodyConvertDocumentResponse inBodyResponse) {

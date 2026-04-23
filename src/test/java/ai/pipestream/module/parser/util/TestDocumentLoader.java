@@ -27,6 +27,14 @@ import java.util.stream.Stream;
 public class TestDocumentLoader {
     private static final Logger LOG = Logger.getLogger(TestDocumentLoader.class);
 
+    private static final String LOGICAL_TEST_DOCUMENTS = "test-documents";
+
+    private static final String[] TEST_DOCUMENTS_JAR_ANCHORS = {
+            "sample_text/sample.txt",
+            "sample_text/constitution.txt",
+            "sample_text",
+    };
+
     /**
      * Represents a reference to a test resource without loading its content.
      */
@@ -134,27 +142,37 @@ public class TestDocumentLoader {
                     return;
                 }
 
-                URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(resourceDir);
-                if (resourceUrl == null) {
-                    LOG.warnf("Resource directory not found (classpath): %s", resourceDir);
-                    emitter.complete();
+                ClassLoader cl = Thread.currentThread().getContextClassLoader();
+                if (isLogicalTestDocumentsTree(resourceDir)) {
+                    String remainder = remainderUnderLogicalTestDocuments(resourceDir);
+                    if (remainder.isEmpty()) {
+                        URL anchor = firstClasspathUrl(cl, TEST_DOCUMENTS_JAR_ANCHORS);
+                        if (anchor == null) {
+                            emitter.fail(new IllegalStateException(
+                                    "Could not locate the published test-documents JAR on the classpath (tried anchors "
+                                            + String.join(", ", TEST_DOCUMENTS_JAR_ANCHORS) + ") while resolving '" + resourceDir + "'. "
+                                            + "Add testImplementation 'ai.pipestream.testdata:test-documents' or set TEST_DOCUMENTS / -Dtest.documents."));
+                            return;
+                        }
+                        URI uri = anchor.toURI();
+                        if ("jar".equals(uri.getScheme())) {
+                            try (FileSystem fileSystem = FileSystems.newFileSystem(uri, Collections.emptyMap())) {
+                                Path jarRoot = fileSystem.getPath("/");
+                                walkAndEmitJar(jarRoot, "", emitter);
+                            }
+                        } else {
+                            emitter.fail(new IllegalStateException(
+                                    "Full-tree logical resource '" + LOGICAL_TEST_DOCUMENTS
+                                            + "' is only supported when test documents are packaged in a JAR on the test classpath."));
+                            return;
+                        }
+                        return;
+                    }
+                    streamClasspathDirectory(cl, remainder, remainder, emitter);
                     return;
                 }
 
-                URI uri = resourceUrl.toURI();
-
-                // Handle JAR vs filesystem resources
-                if ("jar".equals(uri.getScheme())) {
-                    // For JARs, we need to open a FileSystem to walk the contents
-                    try (FileSystem fileSystem = FileSystems.newFileSystem(uri, Collections.emptyMap())) {
-                        Path resourcePath = fileSystem.getPath(resourceDir);
-                        walkAndEmitJar(resourcePath, resourceDir, emitter);
-                    }
-                } else {
-                    // For regular filesystem in classpath, treat as JAR (use resource paths)
-                    Path resourcePath = Paths.get(uri);
-                    walkAndEmitJar(resourcePath, resourceDir, emitter);
-                }
+                streamClasspathDirectory(cl, resourceDir, resourceDir, emitter);
 
             } catch (IOException | URISyntaxException e) {
                 LOG.errorf(e, "Failed to stream resources from %s", resourceDir);
@@ -188,19 +206,17 @@ public class TestDocumentLoader {
                 prop.apply("sample.doc.types")
         );
 
-        if (normalized.startsWith("test-documents")) {
+        if ("test-documents".equals(normalized) || normalized.startsWith("test-documents/")) {
             if (isBlank(testDocsRoot)) return null;
             Path base = Paths.get(testDocsRoot);
-            String remainder = normalized.length() == "test-documents".length() ? "" : normalized.substring("test-documents".length());
-            remainder = remainder.startsWith("/") ? remainder.substring(1) : remainder;
+            String remainder = "test-documents".equals(normalized) ? "" : normalized.substring("test-documents".length() + 1);
             return remainder.isEmpty() ? base : base.resolve(remainder);
         }
 
-        if (normalized.startsWith("sample_doc_types")) {
+        if ("sample_doc_types".equals(normalized) || normalized.startsWith("sample_doc_types/")) {
             if (isBlank(sampleTypesRoot)) return null;
             Path base = Paths.get(sampleTypesRoot);
-            String remainder = normalized.length() == "sample_doc_types".length() ? "" : normalized.substring("sample_doc_types".length());
-            remainder = remainder.startsWith("/") ? remainder.substring(1) : remainder;
+            String remainder = "sample_doc_types".equals(normalized) ? "" : normalized.substring("sample_doc_types".length() + 1);
             return remainder.isEmpty() ? base : base.resolve(remainder);
         }
 
@@ -243,17 +259,23 @@ public class TestDocumentLoader {
 
     /**
      * Walk JAR/classpath path and emit ResourceReference objects for JAR resources.
+     *
+     * @param classpathResourcePathPrefix prefix for {@link ClassLoader#getResourceAsStream(String)} paths
      */
-    private static void walkAndEmitJar(Path basePath, String resourceDir,
+    private static void walkAndEmitJar(Path basePath, String classpathResourcePathPrefix,
                                        io.smallrye.mutiny.subscription.MultiEmitter<? super ResourceReference> emitter) {
         try (Stream<Path> walk = Files.walk(basePath)) {
             walk.filter(Files::isRegularFile)
+                .filter(p -> !isMetaInfPath(basePath, p))
+                .filter(p -> !isPublishedTestDocumentsJarRootCruft(basePath, classpathResourcePathPrefix, p))
                 .sorted() // Ensure consistent ordering
                 .forEach(filePath -> {
                     String filename = filePath.getFileName().toString();
-                    // Build the full resource path for loading via classloader
                     Path relativePath = basePath.relativize(filePath);
-                    String resourcePath = resourceDir + "/" + relativePath.toString().replace('\\', '/');
+                    String rel = relativePath.toString().replace('\\', '/');
+                    String resourcePath = classpathResourcePathPrefix.isEmpty()
+                            ? rel
+                            : classpathResourcePathPrefix + "/" + rel;
                     ResourceReference ref = new ResourceReference(resourcePath, filename);
                     emitter.emit(ref);
                     LOG.tracef("Emitted JAR reference: %s", resourcePath);
@@ -262,6 +284,73 @@ public class TestDocumentLoader {
         } catch (IOException e) {
             emitter.fail(e);
         }
+    }
+
+    private static void streamClasspathDirectory(ClassLoader cl, String lookupKey, String classpathResourcePathPrefix,
+                                                 io.smallrye.mutiny.subscription.MultiEmitter<? super ResourceReference> emitter)
+            throws IOException, URISyntaxException {
+        URL resourceUrl = cl.getResource(lookupKey);
+        if (resourceUrl == null) {
+            emitter.fail(new IllegalStateException(
+                    "Classpath resource not found for key '" + lookupKey + "'. "
+                            + "Ensure ai.pipestream.testdata:test-documents is on the test runtime classpath, "
+                            + "or set TEST_DOCUMENTS / -Dtest.documents to a directory that contains this tree."));
+            return;
+        }
+        URI uri = resourceUrl.toURI();
+        if ("jar".equals(uri.getScheme())) {
+            try (FileSystem fileSystem = FileSystems.newFileSystem(uri, Collections.emptyMap())) {
+                Path resourcePath = fileSystem.getPath(lookupKey);
+                walkAndEmitJar(resourcePath, classpathResourcePathPrefix, emitter);
+            }
+        } else {
+            Path resourcePath = Paths.get(uri);
+            walkAndEmitJar(resourcePath, classpathResourcePathPrefix, emitter);
+        }
+    }
+
+    private static boolean isMetaInfPath(Path basePath, Path file) {
+        Path rel = basePath.relativize(file);
+        String s = rel.toString().replace('\\', '/');
+        return s.startsWith("META-INF/") || "META-INF".equals(s);
+    }
+
+    private static boolean isPublishedTestDocumentsJarRootCruft(Path basePath, String classpathResourcePathPrefix, Path file) {
+        if (!classpathResourcePathPrefix.isEmpty()) {
+            return false;
+        }
+        Path rel = basePath.relativize(file);
+        if (rel.getNameCount() != 1) {
+            return false;
+        }
+        String n = rel.getFileName().toString();
+        return "build.gradle".equals(n)
+                || "settings.gradle".equals(n)
+                || "gradle.properties".equals(n)
+                || n.endsWith(".gradle.kts");
+    }
+
+    private static boolean isLogicalTestDocumentsTree(String resourceDir) {
+        String n = resourceDir == null ? "" : resourceDir.replace('\\', '/');
+        return LOGICAL_TEST_DOCUMENTS.equals(n) || n.startsWith(LOGICAL_TEST_DOCUMENTS + "/");
+    }
+
+    private static String remainderUnderLogicalTestDocuments(String resourceDir) {
+        String n = resourceDir.replace('\\', '/');
+        if (LOGICAL_TEST_DOCUMENTS.equals(n)) {
+            return "";
+        }
+        return n.substring(LOGICAL_TEST_DOCUMENTS.length() + 1);
+    }
+
+    private static URL firstClasspathUrl(ClassLoader cl, String... relativePaths) {
+        for (String p : relativePaths) {
+            URL u = cl.getResource(p);
+            if (u != null) {
+                return u;
+            }
+        }
+        return null;
     }
     
     /**

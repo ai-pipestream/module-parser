@@ -31,6 +31,19 @@ import java.util.stream.Stream;
  */
 public class ReactiveTestDocumentLoader {
     private static final Logger LOG = Logger.getLogger(ReactiveTestDocumentLoader.class);
+
+    /**
+     * Logical key {@code test-documents} refers to the published {@code ai.pipestream.testdata:test-documents} JAR,
+     * which stores categories at the jar root (e.g. {@code pdf/}, {@code sample_text/}), not under a {@code test-documents/} entry.
+     */
+    private static final String LOGICAL_TEST_DOCUMENTS = "test-documents";
+
+    /** Known classpath entries inside the published jar — used only to obtain a {@code jar:} URL for full-tree walks. */
+    private static final String[] TEST_DOCUMENTS_JAR_ANCHORS = {
+            "sample_text/sample.txt",
+            "sample_text/constitution.txt",
+            "sample_text",
+    };
     
     /**
      * Represents a reference to a test resource without loading its content.
@@ -140,28 +153,36 @@ public class ReactiveTestDocumentLoader {
                         return;
                     }
 
-                    URL resourceUrl = Thread.currentThread().getContextClassLoader().getResource(resourceDir);
-                    if (resourceUrl == null) {
-                        LOG.warnf("Resource directory not found in classpath: %s. This is expected when using external test documents.", resourceDir);
-                        LOG.infof("Will attempt to load from external filesystem paths configured via TEST_DOCUMENTS/SAMPLE_DOC_TYPES environment variables or system properties");
-                        emitter.complete();
+                    ClassLoader cl = Thread.currentThread().getContextClassLoader();
+                    if (isLogicalTestDocumentsTree(resourceDir)) {
+                        String remainder = remainderUnderLogicalTestDocuments(resourceDir);
+                        if (remainder.isEmpty()) {
+                            URL anchor = firstClasspathUrl(cl, TEST_DOCUMENTS_JAR_ANCHORS);
+                            if (anchor == null) {
+                                emitter.fail(missingTestDocumentsJarMessage(resourceDir));
+                                return;
+                            }
+                            URI uri = anchor.toURI();
+                            LOG.debugf("Walking full test-documents jar from anchor URI: %s", uri);
+                            if ("jar".equals(uri.getScheme())) {
+                                try (FileSystem fileSystem = FileSystems.newFileSystem(uri, Collections.emptyMap())) {
+                                    Path jarRoot = fileSystem.getPath("/");
+                                    emitResourceReferences(jarRoot, "", emitter);
+                                }
+                            } else {
+                                emitter.fail(new IllegalStateException(
+                                        "Full-tree logical resource '" + LOGICAL_TEST_DOCUMENTS
+                                                + "' is only supported when test documents are packaged in a JAR on the test classpath. "
+                                                + "Use category paths (e.g. sample_text), set TEST_DOCUMENTS to a checkout, or add ai.pipestream.testdata:test-documents."));
+                                return;
+                            }
+                            return;
+                        }
+                        streamClasspathDirectory(cl, remainder, remainder, emitter);
                         return;
                     }
-                    
-                    URI uri = resourceUrl.toURI();
-                    LOG.debugf("Loading resources from URI: %s (scheme: %s)", uri, uri.getScheme());
-                    
-                    if ("jar".equals(uri.getScheme())) {
-                        // Handle JAR resources
-                        try (FileSystem fileSystem = FileSystems.newFileSystem(uri, Collections.emptyMap())) {
-                            Path resourcePath = fileSystem.getPath(resourceDir);
-                            emitResourceReferences(resourcePath, resourceDir, emitter);
-                        }
-                    } else {
-                        // Handle filesystem resources
-                        Path resourcePath = Paths.get(uri);
-                        emitResourceReferences(resourcePath, resourceDir, emitter);
-                    }
+
+                    streamClasspathDirectory(cl, resourceDir, resourceDir, emitter);
                     
                 } catch (IOException | URISyntaxException e) {
                     LOG.errorf(e, "Failed to stream resources from %s", resourceDir);
@@ -173,11 +194,16 @@ public class ReactiveTestDocumentLoader {
     
     /**
      * Walk the path and emit ResourceReference objects (not the actual content).
+     *
+     * @param classpathResourcePathPrefix prefix for {@link ClassLoader#getResourceAsStream(String)} paths
+     *                                    (empty when {@code basePath} is the jar filesystem root)
      */
-    private static void emitResourceReferences(Path basePath, String resourceDir,
+    private static void emitResourceReferences(Path basePath, String classpathResourcePathPrefix,
                                               io.smallrye.mutiny.subscription.MultiEmitter<? super ResourceReference> emitter) {
         try (Stream<Path> walk = Files.walk(basePath)) {
             walk.filter(Files::isRegularFile)
+                .filter(p -> !isMetaInfPath(basePath, p))
+                .filter(p -> !isPublishedTestDocumentsJarRootCruft(basePath, classpathResourcePathPrefix, p))
                 .sorted() // Ensure consistent ordering
                 .forEach(path -> {
                     String filename = path.getFileName().toString();
@@ -191,7 +217,10 @@ public class ReactiveTestDocumentLoader {
                     
                     // Build the full resource path for loading
                     Path relativePath = basePath.relativize(path);
-                    String resourcePath = resourceDir + "/" + relativePath.toString().replace('\\', '/');
+                    String rel = relativePath.toString().replace('\\', '/');
+                    String resourcePath = classpathResourcePathPrefix.isEmpty()
+                            ? rel
+                            : classpathResourcePathPrefix + "/" + rel;
                     
                     // Emit the reference (lightweight object)
                     ResourceReference ref = new ResourceReference(resourcePath, filename, category);
@@ -204,6 +233,88 @@ public class ReactiveTestDocumentLoader {
         } catch (IOException e) {
             emitter.fail(e);
         }
+    }
+
+    private static void streamClasspathDirectory(ClassLoader cl, String lookupKey, String classpathResourcePathPrefix,
+                                                 io.smallrye.mutiny.subscription.MultiEmitter<? super ResourceReference> emitter)
+            throws IOException, URISyntaxException {
+        URL resourceUrl = cl.getResource(lookupKey);
+        if (resourceUrl == null) {
+            emitter.fail(new IllegalStateException(
+                    "Classpath resource not found for key '" + lookupKey + "'. "
+                            + "Ensure ai.pipestream.testdata:test-documents is on the test runtime classpath, "
+                            + "or set TEST_DOCUMENTS / -Dtest.documents to a directory that contains this tree."));
+            return;
+        }
+        URI uri = resourceUrl.toURI();
+        LOG.debugf("Loading resources from URI: %s (scheme: %s)", uri, uri.getScheme());
+        if ("jar".equals(uri.getScheme())) {
+            try (FileSystem fileSystem = FileSystems.newFileSystem(uri, Collections.emptyMap())) {
+                Path resourcePath = fileSystem.getPath(lookupKey);
+                emitResourceReferences(resourcePath, classpathResourcePathPrefix, emitter);
+            }
+        } else {
+            Path resourcePath = Paths.get(uri);
+            emitResourceReferences(resourcePath, classpathResourcePathPrefix, emitter);
+        }
+    }
+
+    private static boolean isMetaInfPath(Path basePath, Path file) {
+        Path rel = basePath.relativize(file);
+        String s = rel.toString().replace('\\', '/');
+        return s.startsWith("META-INF/") || "META-INF".equals(s);
+    }
+
+    /**
+     * The published {@code test-documents} jar may include Gradle project files at the jar root; skip those when
+     * walking the full tree (logical {@code test-documents} with empty classpath prefix).
+     */
+    private static boolean isPublishedTestDocumentsJarRootCruft(Path basePath, String classpathResourcePathPrefix, Path file) {
+        if (!classpathResourcePathPrefix.isEmpty()) {
+            return false;
+        }
+        Path rel = basePath.relativize(file);
+        if (rel.getNameCount() != 1) {
+            return false;
+        }
+        String n = rel.getFileName().toString();
+        return "build.gradle".equals(n)
+                || "settings.gradle".equals(n)
+                || "gradle.properties".equals(n)
+                || n.endsWith(".gradle.kts");
+    }
+
+    private static boolean isLogicalTestDocumentsTree(String resourceDir) {
+        String n = resourceDir == null ? "" : resourceDir.replace('\\', '/');
+        return LOGICAL_TEST_DOCUMENTS.equals(n) || n.startsWith(LOGICAL_TEST_DOCUMENTS + "/");
+    }
+
+    /**
+     * Classpath path under the published test-documents jar (jar root layout), without the logical {@code test-documents/} prefix.
+     */
+    private static String remainderUnderLogicalTestDocuments(String resourceDir) {
+        String n = resourceDir.replace('\\', '/');
+        if (LOGICAL_TEST_DOCUMENTS.equals(n)) {
+            return "";
+        }
+        return n.substring(LOGICAL_TEST_DOCUMENTS.length() + 1);
+    }
+
+    private static URL firstClasspathUrl(ClassLoader cl, String... relativePaths) {
+        for (String p : relativePaths) {
+            URL u = cl.getResource(p);
+            if (u != null) {
+                return u;
+            }
+        }
+        return null;
+    }
+
+    private static Throwable missingTestDocumentsJarMessage(String resourceDir) {
+        return new IllegalStateException(
+                "Could not locate the published test-documents JAR on the classpath (tried anchors "
+                        + String.join(", ", TEST_DOCUMENTS_JAR_ANCHORS) + ") while resolving '" + resourceDir + "'. "
+                        + "Add testImplementation 'ai.pipestream.testdata:test-documents' or set TEST_DOCUMENTS / -Dtest.documents.");
     }
 
     /**
@@ -392,65 +503,21 @@ public class ReactiveTestDocumentLoader {
                 prop.apply("sample.doc.types")
         );
 
-        // Helper to infer default base directory with multiple fallback strategies
-        java.util.function.Supplier<Path> inferDefaultBase = () -> {
-            try {
-                // Check /tmp/sample-docs as the default location
-                Path tmp = Paths.get("/tmp", "sample-docs");
-                if (Files.isDirectory(tmp)) {
-                    LOG.debugf("Found sample-documents in /tmp: %s", tmp);
-                    return tmp.toAbsolutePath();
-                }
-
-                LOG.debug("No sample-documents directory found using any inference strategy");
-                return null;
-            } catch (Exception e) {
-                LOG.debugf("Exception during base directory inference: %s", e.getMessage());
+        if ("test-documents".equals(normalized) || normalized.startsWith("test-documents/")) {
+            if (isBlank(testDocsRoot)) {
                 return null;
             }
-        };
-
-        if (normalized.startsWith("test-documents")) {
-            Path base = null;
-            if (!isBlank(testDocsRoot)) {
-                base = Paths.get(testDocsRoot);
-            } else {
-                Path inferred = inferDefaultBase.get();
-                if (inferred != null && Files.isDirectory(inferred.resolve("test-documents"))) {
-                    base = inferred.resolve("test-documents");
-                    LOG.infof("Using inferred default TEST_DOCUMENTS at: %s", base);
-                }
-            }
-            if (base == null) {
-                LOG.warnf("TEST_DOCUMENTS not configured for '%s'. Checked: env TEST_DOCUMENTS='%s', system -Dtest.documents='%s', inferred paths",
-                        resourceDir, testDocsRoot, System.getProperty("test.documents"));
-                LOG.warnf("To fix: Set TEST_DOCUMENTS environment variable or -Dtest.documents system property to the absolute path of your test documents directory");
-            }
-            if (base == null) return null;
-            String remainder = normalized.length() == "test-documents".length() ? "" : normalized.substring("test-documents".length());
-            remainder = remainder.startsWith("/") ? remainder.substring(1) : remainder;
+            Path base = Paths.get(testDocsRoot);
+            String remainder = "test-documents".equals(normalized) ? "" : normalized.substring("test-documents".length() + 1);
             return remainder.isEmpty() ? base : base.resolve(remainder);
         }
 
-        if (normalized.startsWith("sample_doc_types")) {
-            Path base = null;
-            if (!isBlank(sampleTypesRoot)) {
-                base = Paths.get(sampleTypesRoot);
-            } else {
-                Path inferred = inferDefaultBase.get();
-                if (inferred != null && Files.isDirectory(inferred.resolve("sample_doc_types"))) {
-                    base = inferred.resolve("sample_doc_types");
-                    LOG.infof("Using inferred default SAMPLE_DOC_TYPES at: %s", base);
-                }
+        if ("sample_doc_types".equals(normalized) || normalized.startsWith("sample_doc_types/")) {
+            if (isBlank(sampleTypesRoot)) {
+                return null;
             }
-            if (base == null) {
-                LOG.warnf("SAMPLE_DOC_TYPES not configured for '%s'. Checked: env SAMPLE_DOC_TYPES='%s', system -Dsample.doc.types='%s', inferred paths",
-                        resourceDir, sampleTypesRoot, System.getProperty("sample.doc.types"));
-                LOG.warnf("To fix: Set SAMPLE_DOC_TYPES environment variable or -Dsample.doc.types system property to the absolute path of your sample document types directory");
-            }
-            if (base == null) return null;
-            String remainder = normalized.length() == "sample_doc_types".length() ? "" : normalized.substring("sample_doc_types".length());
-            remainder = remainder.startsWith("/") ? remainder.substring(1) : remainder;
+            Path base = Paths.get(sampleTypesRoot);
+            String remainder = "sample_doc_types".equals(normalized) ? "" : normalized.substring("sample_doc_types".length() + 1);
             return remainder.isEmpty() ? base : base.resolve(remainder);
         }
 
